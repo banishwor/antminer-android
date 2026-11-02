@@ -2,46 +2,52 @@ package com.example.antminerconnectiontest.theme
 
 import androidx.compose.ui.graphics.Color
 
-// --- Dark Mode: "Control Room" ---
-// Near-black, green-tinted surfaces; emerald is the working accent and
-// amber is reserved for warnings / offline emphasis. Dense, technical.
-val DarkBackground = Color(0xFF070B08)
-val DarkSurface = Color(0xFF0C120E)
-val DarkSurfaceVariant = Color(0xFF141C16)
-val DarkBorder = Color(0xFF243529)
-val DarkBorderSubtle = Color(0xFF1B2920)
+// ── Nord palette (v0.2.0, "Style A — Nord Clean Light") ─────────────────
+// One palette for both themes: light uses the bright Nord snow-storm
+// surfaces, dark uses the polar-night surfaces, and every layout and
+// component is identical across the two — only the surface/text tones
+// swap. Colour carries STATUS only (green = online, red = offline,
+// amber = needs-password / warning), never the data source: a cloud
+// machine and a local machine are the same machine in two states, told
+// apart by the LIVE / REMOTE chip, not by paint.
 
-val AntminerEmerald = Color(0xFF00E676)
-val AntminerEmeraldDark = Color(0xFF0D5C35)
-val CyberCyan = Color(0xFF00E5FF)
-val ElectricBlue = Color(0xFF2979FF)
-val WarningAmber = Color(0xFFFFB300)
-val ErrorRuby = Color(0xFFFF5252)
-
-val DarkTextPrimary = Color(0xFFF0F6FC)
-val DarkTextSecondary = Color(0xFF8B949E)
-val DarkTextMuted = Color(0xFF5A6472)
-
-// --- Light Mode: "Clean Light" ---
-// White / soft-grey surfaces with a single green accent; airy and calm.
-val LightBackground = Color(0xFFF6F7F6)
+// --- Light theme: snow storm ---
+val LightBackground = Color(0xFFECEFF4) // nord6
 val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceVariant = Color(0xFFEDF1ED)
-val LightBorder = Color(0xFFDEE5DE)
-val LightBorderSubtle = Color(0xFFCBD5CB)
+val LightSurfaceVariant = Color(0xFFE5E9F0) // nord5
+val LightBorder = Color(0xFFD8DEE9) // nord4
+val LightBorderSubtle = Color(0xFFE5E9F0) // nord5
 
-val LightEmerald = Color(0xFF16A34A)
-val LightEmeraldDark = Color(0xFF14532D)
-val LightCyan = Color(0xFF0284C7)
-val LightBlue = Color(0xFF2563EB)
-val LightWarning = Color(0xFFD97706)
-val LightError = Color(0xFFDC2626)
+val LightTextPrimary = Color(0xFF2E3440) // nord0
+val LightTextSecondary = Color(0xFF4C566A) // nord3
+val LightTextMuted = Color(0xFF616E88) // brightened nord3
 
-val LightTextPrimary = Color(0xFF14231A)
-val LightTextSecondary = Color(0xFF4B5A50)
-val LightTextMuted = Color(0xFF8A978D)
+// --- Dark theme: polar night ---
+val DarkBackground = Color(0xFF2E3440) // nord0
+val DarkSurface = Color(0xFF3B4252) // nord1
+val DarkSurfaceVariant = Color(0xFF434C5E) // nord2
+val DarkBorder = Color(0xFF4C566A) // nord3
+val DarkBorderSubtle = Color(0xFF434C5E) // nord2
 
-// Compatibility aliases (dark values; prefer MaterialTheme tokens in new code)
+val DarkTextPrimary = Color(0xFFECEFF4) // nord6
+val DarkTextSecondary = Color(0xFFD8DEE9) // nord4
+val DarkTextMuted = Color(0xFF8F9BB3)
+
+// --- Nord accents (shared hues; the colour schemes deepen/lighten per
+// theme where a token is used as text — see Theme.kt). ---
+/** Nord green (nord14 #A3BE8C) deepened so it stays legible as text/icons on light surfaces. */
+val AntminerEmerald = Color(0xFF7A9A5B)
+val AntminerEmeraldDark = Color(0xFF4A6338)
+/** Nord blue (nord10). Kept under its historic name; it is a blue now, not a cyan. */
+val CyberCyan = Color(0xFF5E81AC)
+/** Nord frost (nord8) — decorative accents and chart series only. */
+val ElectricBlue = Color(0xFF88C0D0)
+/** Amber for warnings / needs-password (a #B7791F-style deepened nord13). */
+val WarningAmber = Color(0xFFB7791F)
+/** Nord red (nord11). */
+val ErrorRuby = Color(0xFFBF616A)
+
+// Compatibility aliases (prefer MaterialTheme tokens in new code)
 val MinerBackground = DarkBackground
 val MinerSurface = DarkSurface
 val MinerSurfaceVariant = DarkSurfaceVariant

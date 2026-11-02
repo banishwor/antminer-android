@@ -33,24 +33,15 @@ enum class ThemeMode {
 }
 
 /**
- * Font for raw data/numerals. The dark "Control Room" theme sets data in
- * monospace; the light "Clean Light" theme uses the regular rounded sans.
- * Screens should read this instead of hard-coding FontFamily.Monospace so
- * the same layout speaks both theme languages.
+ * Font for raw data — numerals and machine identifiers only. Nord keeps
+ * body text in the regular sans (see Type.kt); components should read
+ * this instead of hard-coding FontFamily.Monospace.
  */
 val LocalDataFontFamily = staticCompositionLocalOf<FontFamily> { FontFamily.Monospace }
 
-// Control Room: sharp, technical corners.
-private val DarkShapes = Shapes(
-    extraSmall = RoundedCornerShape(2.dp),
-    small = RoundedCornerShape(4.dp),
-    medium = RoundedCornerShape(6.dp),
-    large = RoundedCornerShape(8.dp),
-    extraLarge = RoundedCornerShape(10.dp)
-)
-
-// Clean Light: soft, generous corners.
-private val LightShapes = Shapes(
+// Nord: soft, generous corners — one shape scale for both themes
+// (16dp cards), so a layout never changes shape with the theme.
+private val NordShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(16.dp),
@@ -58,48 +49,22 @@ private val LightShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp)
 )
 
-private val AntminerDarkColorScheme = darkColorScheme(
-    primary = AntminerEmerald,
-    onPrimary = Color(0xFF003919),
-    primaryContainer = AntminerEmeraldDark,
-    onPrimaryContainer = Color(0xFFA7F3D0),
-    secondary = CyberCyan,
-    onSecondary = Color(0xFF00363D),
-    secondaryContainer = Color(0xFF004F58),
-    onSecondaryContainer = Color(0xFF97F0FF),
-    tertiary = WarningAmber,
-    onTertiary = Color(0xFF3A2A00),
-    tertiaryContainer = Color(0xFF4A3600),
-    onTertiaryContainer = Color(0xFFFFDE9E),
-    background = DarkBackground,
-    onBackground = DarkTextPrimary,
-    surface = DarkSurface,
-    onSurface = DarkTextPrimary,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkTextSecondary,
-    outline = DarkBorder,
-    outlineVariant = DarkBorderSubtle,
-    error = ErrorRuby,
-    onError = Color.White,
-    errorContainer = Color(0xFF4C1D1D),
-    onErrorContainer = Color(0xFFFFD2D2)
-)
-
+// Light: snow-storm surfaces, nord0 text. The primary green is deepened
+// (#5C7A45) wherever it can appear as text; the bright nord14 (#A3BE8C)
+// lives in containers and fills.
 private val AntminerLightColorScheme = lightColorScheme(
-    primary = LightEmerald,
+    primary = Color(0xFF5C7A45),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCFCE7),
-    onPrimaryContainer = LightEmeraldDark,
-    // Clean Light keeps a single green accent family: secondary is a
-    // deeper green rather than a second hue.
-    secondary = Color(0xFF15803D),
+    primaryContainer = Color(0xFFDCE8C9),
+    onPrimaryContainer = Color(0xFF33481F),
+    secondary = Color(0xFF5E81AC), // nord10 blue
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD9F2E2),
-    onSecondaryContainer = Color(0xFF14532D),
-    tertiary = LightWarning,
+    secondaryContainer = Color(0xFFD8E2EE),
+    onSecondaryContainer = Color(0xFF2E4258),
+    tertiary = Color(0xFFB7791F), // deepened nord13 amber
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFEF3C7),
-    onTertiaryContainer = Color(0xFF92400E),
+    tertiaryContainer = Color(0xFFF7E8C3),
+    onTertiaryContainer = Color(0xFF5C430A),
     background = LightBackground,
     onBackground = LightTextPrimary,
     surface = LightSurface,
@@ -108,10 +73,39 @@ private val AntminerLightColorScheme = lightColorScheme(
     onSurfaceVariant = LightTextSecondary,
     outline = LightBorder,
     outlineVariant = LightBorderSubtle,
-    error = LightError,
+    error = ErrorRuby, // nord11 #BF616A
     onError = Color.White,
-    errorContainer = Color(0xFFFEE2E2),
-    onErrorContainer = Color(0xFF991B1B)
+    errorContainer = Color(0xFFF3D9DB),
+    onErrorContainer = Color(0xFF6E2A30)
+)
+
+// Dark: polar-night surfaces, snow-storm text. Same hues as light; the
+// primary is the bright nord14 itself, which reads well on nord1.
+private val AntminerDarkColorScheme = darkColorScheme(
+    primary = Color(0xFFA3BE8C), // nord14
+    onPrimary = Color(0xFF2E3440),
+    primaryContainer = Color(0xFF4A5D3A),
+    onPrimaryContainer = Color(0xFFDCE8C9),
+    secondary = Color(0xFF88C0D0), // nord8 frost
+    onSecondary = Color(0xFF2E3440),
+    secondaryContainer = Color(0xFF3D5A73),
+    onSecondaryContainer = Color(0xFFD8E9F2),
+    tertiary = Color(0xFFEBCB8B), // nord13
+    onTertiary = Color(0xFF2E3440),
+    tertiaryContainer = Color(0xFF5C4A1F),
+    onTertiaryContainer = Color(0xFFF7E8C3),
+    background = DarkBackground,
+    onBackground = DarkTextPrimary,
+    surface = DarkSurface,
+    onSurface = DarkTextPrimary,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+    outline = DarkBorder,
+    outlineVariant = DarkBorderSubtle,
+    error = Color(0xFFD98E94), // nord11 lightened for small text on polar night
+    onError = Color(0xFF2E3440),
+    errorContainer = Color(0xFF5A3438),
+    onErrorContainer = Color(0xFFF3D9DB)
 )
 
 @Composable
@@ -126,9 +120,6 @@ fun AntminerConnectionTestTheme(
     }
 
     val colorScheme = if (isDark) AntminerDarkColorScheme else AntminerLightColorScheme
-    val typography = if (isDark) DarkTypography else LightTypography
-    val shapes = if (isDark) DarkShapes else LightShapes
-    val dataFont: FontFamily = if (isDark) FontFamily.Monospace else FontFamily.Default
 
     // Status / navigation bar appearance follows the APP theme, not the
     // system theme. enableEdgeToEdge()'s automatic style keys icon
@@ -153,11 +144,11 @@ fun AntminerConnectionTestTheme(
         }
     }
 
-    CompositionLocalProvider(LocalDataFontFamily provides dataFont) {
+    CompositionLocalProvider(LocalDataFontFamily provides FontFamily.Monospace) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = typography,
-            shapes = shapes,
+            typography = NordTypography,
+            shapes = NordShapes,
             content = content
         )
     }
