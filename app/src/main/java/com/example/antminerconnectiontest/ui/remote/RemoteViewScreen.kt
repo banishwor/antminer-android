@@ -48,7 +48,9 @@ fun RemoteViewScreen(
     mergedMiners: List<MergedMinerEntry>
 ) {
     val cloudConfig = uiState.cloudConfig
-    val isCloudConfigured = cloudConfig.isSyncEnabled && cloudConfig.userName.isNotBlank()
+    // Viewing remote machines needs only a user name — it is not gated
+    // by the Relay switch (which controls uploading, not viewing).
+    val isCloudConfigured = cloudConfig.userName.isNotBlank()
     val selected = uiState.selectedRemoteMiner
 
     Scaffold(
@@ -344,10 +346,9 @@ private fun CloudSetupCard(
                         viewModel.updateCloudConfig(
                             webhookUrl = cloudConfig.webhookUrl,
                             userName = userNameInput.trim(),
-                            isSyncEnabled = true,
-                            isAutoUploadEnabled = cloudConfig.isAutoUploadEnabled,
-                            isDownloadRemoteEnabled = true,
-                            isBackgroundServiceEnabled = false
+                            // Setting up viewing must not silently flip
+                            // the Relay switch — keep its current state.
+                            relayEnabled = cloudConfig.isSyncEnabled
                         )
                     },
                     enabled = userNameInput.isNotBlank(),

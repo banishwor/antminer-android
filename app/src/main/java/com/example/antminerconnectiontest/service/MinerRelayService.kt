@@ -79,7 +79,7 @@ class MinerRelayService : Service() {
             while (isActive) {
                 try {
                     val config = storageManager.loadCloudConfig()
-                    if (config.isSyncEnabled && config.isAutoUploadEnabled && config.userName.isNotBlank() && config.webhookUrl.isNotBlank()) {
+                    if (config.isSyncEnabled && config.userName.isNotBlank() && config.webhookUrl.isNotBlank()) {
                         if (!isWifiConnected()) {
                             updateNotification(
                                 "⚡ Relay Standby • Mobile Data",

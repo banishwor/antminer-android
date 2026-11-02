@@ -215,6 +215,9 @@ fun MainDashboardScreen(
                                 onUpdateNicknameAndLocation = viewModel::updateMinerNicknameAndLocation,
                                 onSaveCloudConfig = viewModel::updateCloudConfig,
                                 onTestCloudConnection = viewModel::testCloudConnection,
+                                updateCheckMessage = uiState.updateCheckMessage,
+                                isCheckingForUpdate = uiState.isCheckingForUpdate,
+                                onCheckForUpdates = { viewModel.checkForUpdates(manual = true) },
                                 onAddNewMiner = viewModel::disconnect,
                                 onDisconnect = viewModel::disconnect
                             )
@@ -271,6 +274,48 @@ fun MainDashboardScreen(
                     }
                 )
             }
+        }
+
+        // Update prompt: shown once per version per session, over
+        // whichever screen is current. "Update" opens the release APK
+        // in the browser for download + install-over; "Later" dismisses
+        // this version for the rest of the session.
+        val pendingUpdate = uiState.availableUpdate
+        if (pendingUpdate != null && uiState.updatePromptDismissedTag != pendingUpdate.tag) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUpdatePrompt() },
+                title = { Text("Update available — v${pendingUpdate.versionName}") },
+                text = {
+                    Text(
+                        text = pendingUpdate.notes.ifBlank {
+                            "A newer version of the app is ready to download."
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            try {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(pendingUpdate.apkDownloadUrl)
+                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (_: Throwable) {}
+                            viewModel.dismissUpdatePrompt()
+                        }
+                    ) {
+                        Text("Update")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissUpdatePrompt() }) {
+                        Text("Later")
+                    }
+                }
+            )
         }
     }
 }

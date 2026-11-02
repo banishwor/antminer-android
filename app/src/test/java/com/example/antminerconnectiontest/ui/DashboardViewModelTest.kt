@@ -72,8 +72,7 @@ class DashboardViewModelTest {
         viewModel.updateCloudConfig(
             webhookUrl = "https://script.google.com/test",
             userName = "Tompokchao",
-            isSyncEnabled = true,
-            isAutoUploadEnabled = true
+            relayEnabled = true
         )
 
         val config = viewModel.uiState.value.cloudConfig
@@ -81,6 +80,63 @@ class DashboardViewModelTest {
         assertEquals("Tompokchao", config.userName)
         assertTrue(config.isSyncEnabled)
         assertTrue(config.isAutoUploadEnabled)
+    }
+
+    @Test
+    fun relaySwitch_derivesUploadAndBackgroundFromTheOneSwitch() {
+        val viewModel = DashboardViewModel()
+
+        viewModel.updateCloudConfig(
+            webhookUrl = "https://script.google.com/test",
+            userName = "Master",
+            relayEnabled = true
+        )
+        var config = viewModel.uiState.value.cloudConfig
+        assertTrue(config.isSyncEnabled)
+        assertTrue(config.isAutoUploadEnabled)
+        assertTrue(config.isBackgroundServiceEnabled)
+        assertTrue(config.isDownloadRemoteEnabled)
+
+        viewModel.updateCloudConfig(
+            webhookUrl = "https://script.google.com/test",
+            userName = "Master",
+            relayEnabled = false
+        )
+        config = viewModel.uiState.value.cloudConfig
+        assertFalse(config.isSyncEnabled)
+        assertFalse(config.isAutoUploadEnabled)
+        assertFalse(config.isBackgroundServiceEnabled)
+        // Viewing remote machines is never gated by the Relay switch.
+        assertTrue(config.isDownloadRemoteEnabled)
+    }
+
+    @Test
+    fun turningRelayOff_keepsRemoteViewingState() {
+        val viewModel = DashboardViewModel()
+        val remote = com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot(
+            user = "Luckyson",
+            id = "athok_1",
+            nickname = "Athokpam #1",
+            ip = "192.168.1.2",
+            hashrate5s = 122.5,
+            avgHashrate = 121.9,
+            maxTemp = 62,
+            maxFan = 6500,
+            status = "Online",
+            lastUpdated = "2026-08-30"
+        )
+        viewModel.selectRemoteMiner(remote)
+        assertEquals(remote, viewModel.uiState.value.selectedRemoteMiner)
+
+        viewModel.updateCloudConfig(
+            webhookUrl = "https://script.google.com/test",
+            userName = "Master",
+            relayEnabled = false
+        )
+
+        // Relay OFF stops uploads only — the remote miner being viewed
+        // must not be kicked out from under the user.
+        assertEquals(remote, viewModel.uiState.value.selectedRemoteMiner)
     }
 
     @Test

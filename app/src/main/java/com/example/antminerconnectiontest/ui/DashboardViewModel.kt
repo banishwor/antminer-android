@@ -121,7 +121,14 @@ data class AppUiState(
     val isBatchConnecting: Boolean = false,
     val batchConnectProgress: Float = 0f,
     val batchConnectMessage: String? = null,
-    val isWifiConnected: Boolean = true
+    val isWifiConnected: Boolean = true,
+    /** Newer GitHub release found by the update check, if any. */
+    val availableUpdate: com.example.antminerconnectiontest.data.update.AvailableUpdate? = null,
+    /** Tag of the update the user dismissed with "Later" this session. */
+    val updatePromptDismissedTag: String? = null,
+    val isCheckingForUpdate: Boolean = false,
+    /** Result line for the manual "Check for updates" entry. */
+    val updateCheckMessage: String? = null
 )
 
 class DashboardViewModel(
@@ -274,7 +281,7 @@ class DashboardViewModel(
                     savedProfiles = profileManager.savedProfiles.value
                 )
             }
-            if (savedCloudConfig.isBackgroundServiceEnabled && savedCloudConfig.isSyncEnabled) {
+            if (savedCloudConfig.isSyncEnabled) {
                 try {
                     com.example.antminerconnectiontest.service.MinerRelayService.start(getApplication())
                 } catch (_: Throwable) {}
@@ -406,6 +413,82 @@ class DashboardViewModel(
 
         // Start Cloud Sync Loop
         startCloudSyncLoop()
+
+        // One update check per cold start. Silent on failure/offline.
+        checkForUpdates(manual = false)
+    }
+
+    /** Installed versionName ("0.1.4"), or null when it cannot be read. */
+    fun installedVersionName(): String? {
+        return try {
+            val app = getApplication<Application>()
+            app.packageManager.getPackageInfo(app.packageName, 0).versionName
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Checks GitHub Releases for a build newer than the installed one.
+     * Automatic checks (cold start) only fill [AppUiState.availableUpdate]
+     * — the prompt UI decides whether to show it — and fail silently.
+     * Manual checks additionally report "You're up to date" (or that the
+     * check failed) via [AppUiState.updateCheckMessage].
+     */
+    fun checkForUpdates(manual: Boolean) {
+        if (_uiState.value.isCheckingForUpdate) return
+        val installed = installedVersionName() ?: run {
+            if (manual) {
+                _uiState.update { it.copy(updateCheckMessage = "Couldn't check for updates.") }
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                isCheckingForUpdate = true,
+                updateCheckMessage = if (manual) null else it.updateCheckMessage
+            )
+        }
+        viewModelScope.launch {
+            val result = com.example.antminerconnectiontest.data.update.UpdateChecker
+                .fetchLatestUpdate(installed)
+            result.fold(
+                onSuccess = { update ->
+                    _uiState.update {
+                        it.copy(
+                            isCheckingForUpdate = false,
+                            // A manual check is authoritative; an automatic
+                            // one only ever adds a prompt, never removes.
+                            availableUpdate = if (manual) update else (update ?: it.availableUpdate),
+                            updateCheckMessage = when {
+                                !manual -> it.updateCheckMessage
+                                update != null -> "Update available: v${update.versionName}"
+                                else -> "You're up to date."
+                            }
+                        )
+                    }
+                },
+                onFailure = {
+                    _uiState.update {
+                        it.copy(
+                            isCheckingForUpdate = false,
+                            updateCheckMessage = if (manual) {
+                                "Couldn't check for updates. Check your connection and try again."
+                            } else {
+                                it.updateCheckMessage
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /** "Later" on the update prompt: don't nag again for this version this session. */
+    fun dismissUpdatePrompt() {
+        _uiState.update {
+            it.copy(updatePromptDismissedTag = it.availableUpdate?.tag ?: it.updatePromptDismissedTag)
+        }
     }
 
     private fun startCloudSyncLoop() {
@@ -413,7 +496,10 @@ class DashboardViewModel(
         cloudSyncJob = viewModelScope.launch {
             while (isActive) {
                 val cfg = _uiState.value.cloudConfig
-                if (cfg.isSyncEnabled && cfg.webhookUrl.isNotBlank() && cfg.userName.isNotBlank()) {
+                // The cycle runs whenever a user name is set — even with
+                // Relay OFF — because viewing remote machines is not gated
+                // by the Relay switch; only the upload inside the cycle is.
+                if (cfg.webhookUrl.isNotBlank() && cfg.userName.isNotBlank()) {
                     performCloudSyncCycle(cfg)
                 }
                 delay(20000L) // 20s interval
@@ -422,8 +508,9 @@ class DashboardViewModel(
     }
 
     private suspend fun performCloudSyncCycle(cfg: CloudSyncConfig) {
-        // 1. Auto-upload local miners if enabled and connected to Wi-Fi
-        if (cfg.isAutoUploadEnabled && isWifiConnected()) {
+        // 1. Upload local miners — only when the Relay switch is ON and
+        //    connected to Wi-Fi.
+        if (cfg.isSyncEnabled && isWifiConnected()) {
             val localProfiles = profileManager.savedProfiles.value
             val currentData = repository.dashboardData.value
             val isLocalOnline = currentData?.isOnline == true
@@ -476,58 +563,58 @@ class DashboardViewModel(
             }
         }
 
-        // 2. Fetch permitted remote miners (only if isDownloadRemoteEnabled is true)
-        if (cfg.isDownloadRemoteEnabled) {
-            val fetchRes = cloudSyncManager.fetchRemoteMiners(cfg.webhookUrl, cfg.userName)
-            fetchRes.onSuccess { response ->
-                _uiState.update {
-                    it.copy(
-                        remoteMiners = response.miners,
-                        isCloudConnected = true,
-                        lastCloudSyncTimestamp = System.currentTimeMillis()
-                    )
-                }
-            }.onFailure { err ->
-                _uiState.update {
-                    it.copy(isCloudConnected = false)
-                }
-            }
-        } else {
+        // 2. Fetch permitted remote miners. Viewing is NOT gated by the
+        //    Relay switch — it happens whenever a user name is set.
+        val fetchRes = cloudSyncManager.fetchRemoteMiners(cfg.webhookUrl, cfg.userName)
+        fetchRes.onSuccess { response ->
             _uiState.update {
-                it.copy(remoteMiners = emptyList(), isCloudConnected = true)
+                it.copy(
+                    remoteMiners = response.miners,
+                    isCloudConnected = true,
+                    lastCloudSyncTimestamp = System.currentTimeMillis()
+                )
+            }
+        }.onFailure { err ->
+            _uiState.update {
+                it.copy(isCloudConnected = false)
             }
         }
     }
 
+    /**
+     * Applies the cloud config with the SINGLE Relay switch. ON =
+     * uploads local miners under [userName] and the 24/7 background
+     * relay service runs; OFF = no uploads and the service is stopped.
+     * Remote viewing is unaffected either way — the remote list and any
+     * selected remote miner are kept, and a fetch runs immediately.
+     */
     fun updateCloudConfig(
         webhookUrl: String,
         userName: String,
-        isSyncEnabled: Boolean,
-        isAutoUploadEnabled: Boolean,
-        isDownloadRemoteEnabled: Boolean = true,
-        isBackgroundServiceEnabled: Boolean = false
+        relayEnabled: Boolean
     ) {
         val effectiveUrl = webhookUrl.trim().ifBlank { _uiState.value.cloudConfig.webhookUrl.ifBlank { CloudSyncConfig.DEFAULT_WEBHOOK_URL } }
         val newCfg = CloudSyncConfig(
             webhookUrl = effectiveUrl,
             userName = userName.trim(),
-            isSyncEnabled = isSyncEnabled,
-            isAutoUploadEnabled = isAutoUploadEnabled && isSyncEnabled,
-            isDownloadRemoteEnabled = isDownloadRemoteEnabled && isSyncEnabled,
-            isBackgroundServiceEnabled = isBackgroundServiceEnabled && isSyncEnabled
+            isSyncEnabled = relayEnabled,
+            isAutoUploadEnabled = relayEnabled,
+            isDownloadRemoteEnabled = true,
+            isBackgroundServiceEnabled = relayEnabled
         )
         _uiState.update {
             it.copy(
                 cloudConfig = newCfg,
-                cloudTestMessage = if (isSyncEnabled) "✅ Configuration saved successfully!" else "Cloud sync disabled (Offline Mode)",
-                remoteMiners = if (isSyncEnabled) it.remoteMiners else emptyList(),
-                selectedRemoteMiner = if (isSyncEnabled) it.selectedRemoteMiner else null,
-                isCloudConnected = if (isSyncEnabled) it.isCloudConnected else false
+                cloudTestMessage = if (relayEnabled) {
+                    "✅ Configuration saved successfully!"
+                } else {
+                    "Relay is off — your miners are not uploaded. Remote viewing still works."
+                }
             )
         }
         storageManager?.saveCloudConfig(newCfg)
 
-        if (isBackgroundServiceEnabled && isSyncEnabled) {
+        if (relayEnabled) {
             try {
                 com.example.antminerconnectiontest.service.MinerRelayService.start(getApplication())
             } catch (_: Throwable) {}
@@ -537,9 +624,7 @@ class DashboardViewModel(
             } catch (_: Throwable) {}
         }
 
-        if (isSyncEnabled) {
-            syncCloudNow()
-        }
+        syncCloudNow()
     }
 
     fun testCloudConnection(webhookUrl: String, userName: String) {
@@ -579,10 +664,8 @@ class DashboardViewModel(
 
     fun syncCloudNow() {
         val cfg = _uiState.value.cloudConfig
-        if (!cfg.isSyncEnabled) {
-            _uiState.update { it.copy(remoteMiners = emptyList(), selectedRemoteMiner = null, isCloudConnected = false) }
-            return
-        }
+        // No Relay-switch gate: syncing includes fetching remote miners,
+        // which stays available with Relay OFF.
         if (cfg.webhookUrl.isNotBlank() && cfg.userName.isNotBlank()) {
             viewModelScope.launch {
                 performCloudSyncCycle(cfg)
@@ -997,6 +1080,23 @@ class DashboardViewModel(
         }
     }
 
+    /**
+     * Lands the user on the Home tab with [profile] active and any
+     * add-miner setup flow closed. Completing an add flow (scan batch,
+     * single connect, manual add) must end here — Home is the default
+     * screen once at least one miner exists, and opening a miner's
+     * detail is never the gateway to it.
+     */
+    private fun landOnHomeWith(profile: MinerProfile) {
+        selectSavedProfile(profile)
+        _uiState.update {
+            it.copy(
+                isLocalSetupOpen = false,
+                selectedTab = DashboardTab.HOME
+            )
+        }
+    }
+
     fun selectSavedProfile(profile: MinerProfile) {
         _uiState.update {
             it.copy(
@@ -1338,7 +1438,13 @@ class DashboardViewModel(
         }
 
         val unaddedMiners = discovered.filter { findSavedProfileForMiner(it) == null }
-        if (unaddedMiners.isEmpty()) return
+        if (unaddedMiners.isEmpty()) {
+            // Everything the scan found is already saved: the add flow is
+            // complete, so land on Home instead of leaving the user on the
+            // setup screen to open a miner by hand.
+            profileManager.getActiveProfile()?.let { landOnHomeWith(it) }
+            return
+        }
 
         val cleanUser = username.trim().ifBlank { "root" }
         val cleanPass = pass.ifBlank { "root" }
@@ -1404,12 +1510,6 @@ class DashboardViewModel(
                 profileManager.saveOrUpdateProfile(p)
             }
 
-            val currentActive = profileManager.getActiveProfile()
-            if (currentActive == null && newlyVerifiedProfiles.isNotEmpty()) {
-                val firstProfile = newlyVerifiedProfiles.first()
-                selectSavedProfile(firstProfile)
-            }
-
             _uiState.update {
                 it.copy(
                     isBatchConnecting = false,
@@ -1418,9 +1518,19 @@ class DashboardViewModel(
                         "Successfully added ${newlyVerifiedProfiles.size} miners!"
                     } else {
                         "Authentication failed for discovered miners."
-                    },
-                    selectedTab = if (profileManager.getActiveProfile() != null) DashboardTab.HOME else it.selectedTab
+                    }
                 )
+            }
+
+            // Completing the add flow lands on HOME with a miner active.
+            // This previously only updated the profile manager's internal
+            // active id — uiState.activeProfile (which the navigation
+            // routes on) stayed null, so the user remained on the setup /
+            // remote screens and had to open a miner by hand to reach
+            // Home. saveOrUpdateProfile leaves the last-saved profile as
+            // the manager's active one, which is the machine to land on.
+            if (newlyVerifiedProfiles.isNotEmpty()) {
+                profileManager.getActiveProfile()?.let { landOnHomeWith(it) }
             }
         }
     }

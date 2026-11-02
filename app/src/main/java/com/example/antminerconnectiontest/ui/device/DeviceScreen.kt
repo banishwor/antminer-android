@@ -40,8 +40,11 @@ fun DeviceScreen(
     onSelectProfile: (MinerProfile) -> Unit,
     onDeleteProfile: (String) -> Unit,
     onUpdateNicknameAndLocation: (String, String, String) -> Unit = { _, _, _ -> },
-    onSaveCloudConfig: (String, String, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _, _ -> },
+    onSaveCloudConfig: (String, String, Boolean) -> Unit = { _, _, _ -> },
     onTestCloudConnection: (String, String) -> Unit = { _, _ -> },
+    updateCheckMessage: String? = null,
+    isCheckingForUpdate: Boolean = false,
+    onCheckForUpdates: () -> Unit = {},
     onAddNewMiner: () -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -52,12 +55,9 @@ fun DeviceScreen(
     var editNicknameText by remember { mutableStateOf("") }
     var editLocationText by remember { mutableStateOf("") }
 
-    // Cloud form states
+    // Cloud form states — one Relay switch (see CloudSyncConfig).
     var cloudUserInput by remember(cloudConfig) { mutableStateOf(cloudConfig.userName) }
-    var cloudSyncEnabled by remember(cloudConfig) { mutableStateOf(cloudConfig.isSyncEnabled) }
-    var cloudAutoUploadEnabled by remember(cloudConfig) { mutableStateOf(cloudConfig.isAutoUploadEnabled) }
-    var cloudDownloadRemoteEnabled by remember(cloudConfig) { mutableStateOf(cloudConfig.isDownloadRemoteEnabled) }
-    var cloudBackgroundServiceEnabled by remember(cloudConfig) { mutableStateOf(cloudConfig.isBackgroundServiceEnabled) }
+    var relayEnabled by remember(cloudConfig) { mutableStateOf(cloudConfig.isSyncEnabled) }
     var isCloudExpanded by remember { mutableStateOf(cloudConfig.isSyncEnabled || cloudConfig.userName.isNotBlank()) }
 
     Column(
@@ -152,7 +152,7 @@ fun DeviceScreen(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = CardDefaults.outlinedCardBorder().copy(
                 brush = androidx.compose.ui.graphics.SolidColor(
-                    if (cloudSyncEnabled && isCloudConnected) AntminerEmerald else MaterialTheme.colorScheme.outline
+                    if (relayEnabled && isCloudConnected) AntminerEmerald else MaterialTheme.colorScheme.outline
                 )
             ),
             modifier = Modifier.fillMaxWidth()
@@ -170,13 +170,13 @@ fun DeviceScreen(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(if (cloudSyncEnabled && isCloudConnected) AntminerEmerald.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant),
+                                .background(if (relayEnabled && isCloudConnected) AntminerEmerald.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CloudSync,
                                 contentDescription = null,
-                                tint = if (cloudSyncEnabled && isCloudConnected) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (relayEnabled && isCloudConnected) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -189,7 +189,7 @@ fun DeviceScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                if (cloudSyncEnabled) {
+                                if (relayEnabled) {
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
                                         color = if (isCloudConnected) AntminerEmerald.copy(alpha = 0.2f) else WarningAmber.copy(alpha = 0.2f),
@@ -242,7 +242,11 @@ fun DeviceScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        // Toggles Row
+                        // The ONE Relay switch: applies immediately.
+                        // ON = upload local miners under this user name
+                        // AND keep relaying 24/7 in the background.
+                        // OFF = no uploads, background relay stopped.
+                        // Viewing remote machines works either way.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -250,95 +254,27 @@ fun DeviceScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Cloud Relay",
+                                    text = "Relay",
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Upload local miners and view remote miners via the cloud sheet",
+                                    text = "On: your local miners are uploaded under your user name and relaying keeps running 24/7 in the background, even when the app is closed. Off: nothing is uploaded. Watching remote miners works either way.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
-                                checked = cloudSyncEnabled,
-                                onCheckedChange = { cloudSyncEnabled = it }
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Auto-Upload Local Miners",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp,
-                                    color = if (cloudSyncEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                                Text(
-                                    text = "Upload local miner telemetry to Google Sheet",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (cloudSyncEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                )
-                            }
-                            Switch(
-                                checked = cloudAutoUploadEnabled && cloudSyncEnabled,
-                                onCheckedChange = { cloudAutoUploadEnabled = it },
-                                enabled = cloudSyncEnabled
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Download Remote Farm View",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp,
-                                    color = if (cloudSyncEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                                Text(
-                                    text = "Fetch and display remote miners from Google Sheet",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (cloudSyncEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                )
-                            }
-                            Switch(
-                                checked = cloudDownloadRemoteEnabled && cloudSyncEnabled,
-                                onCheckedChange = { cloudDownloadRemoteEnabled = it },
-                                enabled = cloudSyncEnabled
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Run 24/7 Background Relay",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp,
-                                    color = if (cloudSyncEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                                Text(
-                                    text = "Keeps syncing when app is closed or screen is off",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (cloudSyncEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                )
-                            }
-                            Switch(
-                                checked = cloudBackgroundServiceEnabled && cloudSyncEnabled,
-                                onCheckedChange = { cloudBackgroundServiceEnabled = it },
-                                enabled = cloudSyncEnabled
+                                checked = relayEnabled,
+                                onCheckedChange = { newValue ->
+                                    relayEnabled = newValue
+                                    onSaveCloudConfig(
+                                        cloudConfig.webhookUrl,
+                                        cloudUserInput.trim(),
+                                        newValue
+                                    )
+                                }
                             )
                         }
 
@@ -402,10 +338,7 @@ fun DeviceScreen(
                                     onSaveCloudConfig(
                                         cloudConfig.webhookUrl,
                                         cloudUserInput.trim(),
-                                        cloudSyncEnabled,
-                                        cloudAutoUploadEnabled,
-                                        cloudDownloadRemoteEnabled,
-                                        cloudBackgroundServiceEnabled
+                                        relayEnabled
                                     )
                                 },
                                 shape = RoundedCornerShape(8.dp),
@@ -414,10 +347,71 @@ fun DeviceScreen(
                             ) {
                                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Save Config", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // App Updates Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = CardDefaults.outlinedCardBorder().copy(
+                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "App Updates",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val installedVersion = remember {
+                            try {
+                                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+                            } catch (_: Exception) {
+                                "?"
+                            }
+                        }
+                        Text(
+                            text = "Installed version $installedVersion",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onCheckForUpdates,
+                        enabled = !isCheckingForUpdate,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (isCheckingForUpdate) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Checking...", fontSize = 11.sp)
+                        } else {
+                            Text("Check for updates", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                if (!updateCheckMessage.isNullOrBlank()) {
+                    Text(
+                        text = updateCheckMessage,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

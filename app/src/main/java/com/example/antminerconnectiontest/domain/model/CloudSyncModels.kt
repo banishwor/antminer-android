@@ -5,6 +5,18 @@ import java.util.*
 
 /**
  * Configuration for Google Sheet Cloud Relay & Multi-Site Sync.
+ *
+ * There is exactly ONE user-facing switch: [isSyncEnabled] — "Relay".
+ * ON means the app uploads local miners under [userName] AND the 24/7
+ * background relay service runs. OFF means no uploads and no background
+ * service. Viewing remote machines is NOT gated by the switch: the
+ * sheet is fetched whenever a user name is set, relay on or off.
+ *
+ * The three legacy flags are kept only so stored configs and the
+ * persisted keys stay meaningful; [updateCloudConfig] always writes
+ * them derived from the single switch (upload = switch, background =
+ * switch, download = always true), and nothing reads them for gating
+ * anymore.
  */
 data class CloudSyncConfig(
     val webhookUrl: String = DEFAULT_WEBHOOK_URL,
@@ -16,9 +28,12 @@ data class CloudSyncConfig(
      * is always respected.
      */
     val isSyncEnabled: Boolean = true,
+    /** Legacy mirror of [isSyncEnabled]; not a separate user control. */
     val isAutoUploadEnabled: Boolean = true,
+    /** Legacy: remote viewing is always on when a user name is set. */
     val isDownloadRemoteEnabled: Boolean = true,
-    val isBackgroundServiceEnabled: Boolean = false
+    /** Legacy mirror of [isSyncEnabled]; not a separate user control. */
+    val isBackgroundServiceEnabled: Boolean = true
 ) {
     companion object {
         const val DEFAULT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyHfUeMDm_pnG_PzIeakyxFuWR1QtQIMGwuxj5y26QC_Vhf0i8H-u0EdngMXsDqGTyX1Q/exec"
