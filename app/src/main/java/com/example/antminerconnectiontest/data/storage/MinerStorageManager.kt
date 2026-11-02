@@ -214,7 +214,9 @@ class MinerStorageManager(context: Context) {
         return com.example.antminerconnectiontest.domain.model.CloudSyncConfig(
             webhookUrl = if (savedUrl.isNullOrBlank()) com.example.antminerconnectiontest.domain.model.CloudSyncConfig.DEFAULT_WEBHOOK_URL else savedUrl,
             userName = prefs.getString("cloud_user_name", "") ?: "",
-            isSyncEnabled = prefs.getBoolean("cloud_sync_enabled", false),
+            // Relay is ON by default for installs that never saved a
+            // choice; an explicitly saved OFF is stored and respected.
+            isSyncEnabled = prefs.getBoolean("cloud_sync_enabled", true),
             isAutoUploadEnabled = prefs.getBoolean("cloud_auto_upload_enabled", true),
             isDownloadRemoteEnabled = prefs.getBoolean("cloud_download_remote_enabled", true),
             isBackgroundServiceEnabled = prefs.getBoolean("cloud_bg_service_enabled", false)

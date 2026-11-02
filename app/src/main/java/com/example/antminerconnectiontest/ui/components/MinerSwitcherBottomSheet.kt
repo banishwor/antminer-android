@@ -44,7 +44,7 @@ fun MinerSwitcherBottomSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = MinerSurface,
+        containerColor = MaterialTheme.colorScheme.surface,
         scrimColor = Color.Black.copy(alpha = 0.6f)
     ) {
         Column(
@@ -65,12 +65,12 @@ fun MinerSwitcherBottomSheet(
                         text = "Saved Miners",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Select an active miner or add a new one",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -80,16 +80,16 @@ fun MinerSwitcherBottomSheet(
                         onAddNewMiner()
                     },
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AntminerEmerald),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF003919), modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Miner", color = Color(0xFF003919), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("Add Miner", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
 
-            HorizontalDivider(color = MinerBorder)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             // Profiles list
             if (savedProfiles.isEmpty() && activeProfile != null) {
@@ -134,7 +134,7 @@ fun MinerSwitcherBottomSheet(
                                 text = "Cloud Miners",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(top = 6.dp)
                             )
                         }
@@ -169,10 +169,10 @@ private fun ProfileRowItem(
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) Color(0xFF0F1713) else MinerSurfaceVariant
+            containerColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
         ),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(if (isActive) AntminerEmerald else MinerBorder)
+            brush = androidx.compose.ui.graphics.SolidColor(if (isActive) AntminerEmerald else MaterialTheme.colorScheme.outline)
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -190,13 +190,13 @@ private fun ProfileRowItem(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(if (isActive) AntminerEmerald.copy(alpha = 0.2f) else MinerBackground),
+                        .background(if (isActive) AntminerEmerald.copy(alpha = 0.2f) else MaterialTheme.colorScheme.background),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Speed,
                         contentDescription = null,
-                        tint = if (isActive) AntminerEmerald else TextSecondary,
+                        tint = if (isActive) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -208,7 +208,7 @@ private fun ProfileRowItem(
                     Text(
                         text = profile.effectiveName,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // Live status dot when the race poller has a reading:
@@ -226,13 +226,13 @@ private fun ProfileRowItem(
                             text = profile.host,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isActive) AntminerEmerald else TextSecondary
+                            color = if (isActive) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (hashrateTh != null && hashrateTh > 0.0) {
                             Text(
                                 text = " • ${String.format(java.util.Locale.US, "%.1f", hashrateTh)} TH/s",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         if (hasRemoteSnapshot) {
@@ -251,7 +251,7 @@ private fun ProfileRowItem(
                             text = profile.workerName,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -273,7 +273,7 @@ private fun ProfileRowItem(
                     }
                 } else {
                     IconButton(onClick = { showDeleteConfirmation = true }) {
-                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = TextMuted)
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                     }
                 }
             }
@@ -316,10 +316,10 @@ private fun RemoteRowItem(
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Color(0xFF0F1713) else MinerSurfaceVariant
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
         ),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(if (isSelected) CyberCyan else MinerBorder)
+            brush = androidx.compose.ui.graphics.SolidColor(if (isSelected) CyberCyan else MaterialTheme.colorScheme.outline)
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -352,7 +352,7 @@ private fun RemoteRowItem(
                     Text(
                         text = entry.displayName,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "☁️ ${snapshot.user} • ${snapshot.ip}",
@@ -363,7 +363,7 @@ private fun RemoteRowItem(
                     Text(
                         text = if (snapshot.isStale) "Offline • ${snapshot.timeAgoFormatted}" else "${String.format(java.util.Locale.US, "%.1f", entry.displayHashrateTh)} TH/s • ${snapshot.timeAgoFormatted}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (snapshot.isStale) Color(0xFFEF4444) else TextSecondary
+                        color = if (snapshot.isStale) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

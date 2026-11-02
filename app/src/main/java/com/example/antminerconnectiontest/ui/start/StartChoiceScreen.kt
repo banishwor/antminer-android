@@ -138,7 +138,9 @@ private fun StartOptionCard(
     onClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(14.dp),
+        // Theme shape language: sharp in Control Room dark, soft in
+        // Clean Light — the same card speaks both.
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = CardDefaults.outlinedCardBorder().copy(
             brush = androidx.compose.ui.graphics.SolidColor(accent.copy(alpha = 0.55f))

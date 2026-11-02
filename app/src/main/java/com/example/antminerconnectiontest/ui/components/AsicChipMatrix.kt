@@ -65,9 +65,9 @@ fun AsicChipMatrix(
 
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MinerBackground.copy(alpha = 0.8f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.8f)),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(MinerBorder)
+            brush = SolidColor(MaterialTheme.colorScheme.outline)
         ),
         modifier = modifier.fillMaxWidth()
     ) {
@@ -83,7 +83,7 @@ fun AsicChipMatrix(
                         text = "ASIC Matrix",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -174,7 +174,7 @@ fun AsicChipMatrix(
             if (selectedChip != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
-                    color = MinerSurfaceVariant,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -187,12 +187,12 @@ fun AsicChipMatrix(
                             text = "Chip #${selectedChip!!.chipNumber}: ${selectedChip!!.state.name}",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
-                            color = TextPrimary
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Tap to dismiss",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.clickable { selectedChip = null }
                         )
                     }
@@ -212,6 +212,6 @@ private fun LegendItem(color: Color, label: String) {
                 .background(color)
         )
         Spacer(modifier = Modifier.width(4.dp))
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontSize = 10.sp)
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     }
 }

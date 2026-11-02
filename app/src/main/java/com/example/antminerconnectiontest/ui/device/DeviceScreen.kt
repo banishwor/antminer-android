@@ -236,6 +236,12 @@ fun DeviceScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Text(
+                            text = "Relaying uploads your local miners under this user name, so you can watch them from anywhere in Remote View. Other people who know the name could see your miners' hashrate, temperature and status.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                         // Toggles Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -244,13 +250,13 @@ fun DeviceScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Enable Cloud Sync",
+                                    text = "Cloud Relay",
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Fetch permitted remote miners from cloud",
+                                    text = "Upload local miners and view remote miners via the cloud sheet",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

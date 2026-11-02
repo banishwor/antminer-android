@@ -9,7 +9,13 @@ import java.util.*
 data class CloudSyncConfig(
     val webhookUrl: String = DEFAULT_WEBHOOK_URL,
     val userName: String = "",
-    val isSyncEnabled: Boolean = false,
+    /**
+     * The Relay switch. ON by default: relaying is the point of the app
+     * for multi-site users, and nothing is uploaded until a user name is
+     * set — the sync cycle requires one. A stored OFF (the user chose it)
+     * is always respected.
+     */
+    val isSyncEnabled: Boolean = true,
     val isAutoUploadEnabled: Boolean = true,
     val isDownloadRemoteEnabled: Boolean = true,
     val isBackgroundServiceEnabled: Boolean = false

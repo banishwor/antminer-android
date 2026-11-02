@@ -45,7 +45,7 @@ fun InteractiveHashrateChart(
                 .height(180.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "Awaiting chart telemetry...", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text(text = "Awaiting chart telemetry...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -84,7 +84,7 @@ fun InteractiveHashrateChart(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(MinerSurfaceVariant)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -97,7 +97,7 @@ fun InteractiveHashrateChart(
                         text = "Total Hashrate",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (viewMode == ChartViewMode.TOTAL) Color(0xFF003919) else TextSecondary,
+                        color = if (viewMode == ChartViewMode.TOTAL) Color(0xFF003919) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -111,7 +111,7 @@ fun InteractiveHashrateChart(
                         text = "3 Chains",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (viewMode == ChartViewMode.CHAINS) Color(0xFF003919) else TextSecondary,
+                        color = if (viewMode == ChartViewMode.CHAINS) Color(0xFF003919) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -131,7 +131,7 @@ fun InteractiveHashrateChart(
                 Text(
                     text = "Touch to inspect",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
         }
@@ -282,9 +282,9 @@ fun InteractiveHashrateChart(
             val midLabel = points.getOrNull(points.size / 2)?.timeLabel ?: ""
             val lastLabel = points.lastOrNull()?.timeLabel ?: ""
 
-            Text(text = firstLabel, style = MaterialTheme.typography.labelSmall, color = TextMuted)
-            if (midLabel.isNotBlank()) Text(text = midLabel, style = MaterialTheme.typography.labelSmall, color = TextMuted)
-            Text(text = lastLabel, style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(text = firstLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            if (midLabel.isNotBlank()) Text(text = midLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            Text(text = lastLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
         }
     }
 }
