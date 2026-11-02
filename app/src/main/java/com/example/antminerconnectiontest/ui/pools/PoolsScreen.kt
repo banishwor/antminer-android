@@ -18,11 +18,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerPool
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PoolsScreen(
     profile: MinerProfile,
@@ -36,6 +38,11 @@ fun PoolsScreen(
     val pools = data?.pools ?: emptyList()
     var showFutureEditDialog by remember { mutableStateOf(false) }
 
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onManualRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) {
     if (!isOnline) {
         Column(
             modifier = Modifier
@@ -82,9 +89,7 @@ fun PoolsScreen(
                 )
             }
         }
-        return
-    }
-
+    } else {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -216,6 +221,7 @@ fun PoolsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+    }
 
     if (showFutureEditDialog) {
         AlertDialog(
@@ -239,6 +245,7 @@ fun PoolsScreen(
                 }
             }
         )
+    }
     }
 }
 

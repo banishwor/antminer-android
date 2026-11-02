@@ -32,9 +32,11 @@ import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.AsicChipMatrix
 import com.example.antminerconnectiontest.ui.components.InteractiveHashrateChart
 import com.example.antminerconnectiontest.ui.components.MinerDataState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.example.antminerconnectiontest.ui.components.MinerDataStateCard
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HardwareScreen(
     profile: MinerProfile,
@@ -50,6 +52,11 @@ fun HardwareScreen(
     val chains = stats?.chains ?: emptyList()
     val fans = stats?.fans ?: emptyList()
 
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onManualRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) {
     if (!isOnline) {
         Column(
             modifier = Modifier
@@ -96,9 +103,7 @@ fun HardwareScreen(
                 )
             }
         }
-        return
-    }
-
+    } else {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -220,6 +225,7 @@ fun HardwareScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
     }
 }
 
