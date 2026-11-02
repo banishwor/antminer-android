@@ -1,0 +1,202 @@
+package com.example.antminerconnectiontest.ui
+
+import com.example.antminerconnectiontest.domain.model.MinerProfile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class DashboardViewModelTest {
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun initialSetupState_defaultsToManualAndPrepopulatesRoot() {
+        val viewModel = DashboardViewModel()
+        val state = viewModel.uiState.value
+
+        assertNull(state.activeProfile)
+        assertEquals(SetupTab.MANUAL, state.setupTab)
+        assertEquals("192.168.1.2", state.setupForm.ip)
+        assertEquals("root", state.setupForm.username)
+        assertEquals("root", state.setupForm.password)
+    }
+
+    @Test
+    fun tabNavigation_switchesCorrectly() {
+        val viewModel = DashboardViewModel()
+        viewModel.selectDashboardTab(DashboardTab.HARDWARE)
+        assertEquals(DashboardTab.HARDWARE, viewModel.uiState.value.selectedTab)
+
+        viewModel.selectDashboardTab(DashboardTab.POOLS)
+        assertEquals(DashboardTab.POOLS, viewModel.uiState.value.selectedTab)
+
+        viewModel.selectDashboardTab(DashboardTab.DEVICE)
+        assertEquals(DashboardTab.DEVICE, viewModel.uiState.value.selectedTab)
+    }
+
+    @Test
+    fun formState_updatesOnInput() {
+        val viewModel = DashboardViewModel()
+
+        viewModel.onSetupIpChanged("192.168.1.50")
+        assertEquals("192.168.1.50", viewModel.uiState.value.setupForm.ip)
+
+        viewModel.onSetupPasswordChanged("secret")
+        assertEquals("secret", viewModel.uiState.value.setupForm.password)
+
+        viewModel.toggleSetupPasswordVisibility()
+        assertTrue(viewModel.uiState.value.setupForm.isPasswordVisible)
+    }
+
+    @Test
+    fun updateCloudConfig_updatesStateProperly() {
+        val viewModel = DashboardViewModel()
+
+        viewModel.updateCloudConfig(
+            webhookUrl = "https://script.google.com/test",
+            userName = "Tompokchao",
+            isSyncEnabled = true,
+            isAutoUploadEnabled = true
+        )
+
+        val config = viewModel.uiState.value.cloudConfig
+        assertEquals("https://script.google.com/test", config.webhookUrl)
+        assertEquals("Tompokchao", config.userName)
+        assertTrue(config.isSyncEnabled)
+        assertTrue(config.isAutoUploadEnabled)
+    }
+
+    @Test
+    fun remoteMinerSelection_togglesRemoteViewMode() {
+        val viewModel = DashboardViewModel()
+
+        val remote = com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot(
+            user = "Luckyson",
+            id = "athok_1",
+            nickname = "Athokpam #1",
+            ip = "192.168.1.2",
+            hashrate5s = 122.5,
+            avgHashrate = 121.9,
+            maxTemp = 62,
+            maxFan = 6500,
+            status = "Online",
+            lastUpdated = "2026-08-30"
+        )
+
+        viewModel.selectRemoteMiner(remote)
+        assertEquals(remote, viewModel.uiState.value.selectedRemoteMiner)
+        assertEquals(DashboardTab.HOME, viewModel.uiState.value.selectedTab)
+
+        viewModel.clearRemoteMinerView()
+        assertNull(viewModel.uiState.value.selectedRemoteMiner)
+    }
+
+    @Test
+    fun selectSavedProfile_resetsAndIsolatesDailyAnalysisAndLogs() {
+        val viewModel = DashboardViewModel()
+        val profileA = MinerProfile(id = "miner_A", host = "192.168.1.10", displayName = "Miner A")
+        val profileB = MinerProfile(id = "miner_B", host = "192.168.1.20", displayName = "Miner B")
+
+        viewModel.selectSavedProfile(profileA)
+        assertEquals("miner_A", viewModel.uiState.value.activeProfile?.id)
+        assertEquals("miner_A", viewModel.uiState.value.dailyAnalysisState.loadedForMinerId)
+
+        // Switch to Profile B
+        viewModel.selectSavedProfile(profileB)
+        assertEquals("miner_B", viewModel.uiState.value.activeProfile?.id)
+        assertEquals("miner_B", viewModel.uiState.value.dailyAnalysisState.loadedForMinerId)
+        assertTrue(viewModel.uiState.value.dailyAnalysisState.availableDates.isEmpty())
+        assertNull(viewModel.uiState.value.dailyAnalysisState.selectedAnalysisDetail)
+        assertNull(viewModel.uiState.value.currentLogText)
+        assertNull(viewModel.uiState.value.historyLogText)
+    }
+
+    @Test
+    fun findSavedProfileForMiner_matchesByWorkerMacOrIp() {
+        val viewModel = DashboardViewModel()
+        val profile1 = MinerProfile(
+            id = "m1",
+            workerName = "banishwor.001",
+            macAddress = "EC:84:39:D0:5E:1B",
+            host = "192.168.1.10"
+        )
+        val profile2 = MinerProfile(
+            id = "m2",
+            workerName = "banishwor.002",
+            macAddress = "AA:BB:CC:DD:EE:FF",
+            host = "192.168.1.20"
+        )
+        viewModel.selectSavedProfile(profile1)
+
+        // Matching by worker name
+        val discoveredByWorker = com.example.antminerconnectiontest.data.scanner.DiscoveredMiner(
+            ip = "192.168.1.55", // different IP (DHCP changed)
+            workerName = "banishwor.001",
+            status = com.example.antminerconnectiontest.data.scanner.DiscoveryStatus.CONFIRMED_ANTMINER
+        )
+        val matched1 = viewModel.findSavedProfileForMiner(discoveredByWorker)
+        assertNotNull(matched1)
+        assertEquals("m1", matched1?.id)
+
+        // Matching by IP
+        val discoveredByIp = com.example.antminerconnectiontest.data.scanner.DiscoveredMiner(
+            ip = "192.168.1.10",
+            status = com.example.antminerconnectiontest.data.scanner.DiscoveryStatus.CONFIRMED_ANTMINER
+        )
+        val matched2 = viewModel.findSavedProfileForMiner(discoveredByIp)
+        assertNotNull(matched2)
+        assertEquals("m1", matched2?.id)
+
+        // Unadded miner
+        val discoveredNew = com.example.antminerconnectiontest.data.scanner.DiscoveredMiner(
+            ip = "192.168.1.99",
+            workerName = "banishwor.099",
+            status = com.example.antminerconnectiontest.data.scanner.DiscoveryStatus.CONFIRMED_ANTMINER
+        )
+        val matchedNew = viewModel.findSavedProfileForMiner(discoveredNew)
+        assertNull(matchedNew)
+    }
+
+    @Test
+    fun startNetworkScan_abortsOnMobileNetwork() {
+        val viewModel = DashboardViewModel()
+        // In unit test environment, Application does not have real Wi-Fi network capability
+        assertFalse(viewModel.isWifiConnected())
+
+        viewModel.startNetworkScan()
+        assertFalse(viewModel.uiState.value.scannerState.isScanning)
+        assertTrue(viewModel.uiState.value.scannerState.activeIp.contains("Wi-Fi"))
+    }
+
+    @Test
+    fun openDiscoveredMiner_updatesHostIfIpChanged() {
+        val viewModel = DashboardViewModel()
+        val profile = MinerProfile(
+            id = "miner_1",
+            workerName = "banishwor.001",
+            host = "192.168.1.10"
+        )
+        // Discovered at new DHCP IP
+        viewModel.openDiscoveredMiner(profile, "192.168.1.55")
+
+        assertEquals("192.168.1.55", viewModel.uiState.value.activeProfile?.host)
+        assertEquals("miner_1", viewModel.uiState.value.activeProfile?.id)
+    }
+}
