@@ -72,6 +72,47 @@ class AntminerClient {
         )
 
         private val SHARED_CONNECTION_POOL = okhttp3.ConnectionPool(4, 30L, TimeUnit.SECONDS)
+
+        // One OkHttpClient — with its digest-auth cache — per miner credential
+        // set, reused across requests. Previously every request built a new
+        // client with a brand-new, empty auth cache, so the caching
+        // authenticator could never cache anything and every endpoint call
+        // paid a full 401 digest challenge round-trip (6 endpoints per
+        // refresh, every 15 s, forever). Keys live in memory only.
+        private val CLIENT_CACHE = ConcurrentHashMap<String, OkHttpClient>()
+        private const val MAX_CACHED_CLIENTS = 32
+    }
+
+    /**
+     * Returns the shared client for a miner (host + credentials + timeout
+     * profile), creating and caching it on first use.
+     */
+    private fun clientFor(
+        cleanIp: String,
+        username: String,
+        password: String,
+        readTimeoutSeconds: Long = READ_TIMEOUT_SECONDS
+    ): OkHttpClient {
+        val key = "$cleanIp|$username|$password|$readTimeoutSeconds"
+        CLIENT_CACHE[key]?.let { return it }
+        if (CLIENT_CACHE.size >= MAX_CACHED_CLIENTS) CLIENT_CACHE.clear()
+
+        val authCache = ConcurrentHashMap<String, CachingAuthenticator>()
+        val credentials = Credentials(username, password)
+        val digestAuthenticator = DigestAuthenticator(credentials)
+        val cachingDecorator = CachingAuthenticatorDecorator(digestAuthenticator, authCache)
+
+        val client = OkHttpClient.Builder()
+            .connectionPool(SHARED_CONNECTION_POOL)
+            .authenticator(cachingDecorator)
+            .addInterceptor(AuthenticationCacheInterceptor(authCache))
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
+            .writeTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+
+        return CLIENT_CACHE.putIfAbsent(key, client) ?: client
     }
 
     /**
@@ -119,21 +160,7 @@ class AntminerClient {
 
 
         try {
-            // Configure HTTP Digest Authentication cache & authenticator
-            val authCache = ConcurrentHashMap<String, CachingAuthenticator>()
-            val credentials = Credentials(username, password)
-            val digestAuthenticator = DigestAuthenticator(credentials)
-            val cachingDecorator = CachingAuthenticatorDecorator(digestAuthenticator, authCache)
-
-            val client = OkHttpClient.Builder()
-                .connectionPool(SHARED_CONNECTION_POOL)
-                .authenticator(cachingDecorator)
-                .addInterceptor(AuthenticationCacheInterceptor(authCache))
-                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .writeTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
+            val client = clientFor(cleanIp, username, password)
 
             val request = Request.Builder()
                 .url(targetUrl)
@@ -252,20 +279,7 @@ class AntminerClient {
         val startTime = System.currentTimeMillis()
 
         try {
-            val authCache = ConcurrentHashMap<String, CachingAuthenticator>()
-            val credentials = Credentials(username, password)
-            val digestAuthenticator = DigestAuthenticator(credentials)
-            val cachingDecorator = CachingAuthenticatorDecorator(digestAuthenticator, authCache)
-
-            val client = OkHttpClient.Builder()
-                .connectionPool(SHARED_CONNECTION_POOL)
-                .authenticator(cachingDecorator)
-                .addInterceptor(AuthenticationCacheInterceptor(authCache))
-                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .writeTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
+            val client = clientFor(cleanIp, username, password)
 
             val mediaType = "application/json; charset=utf-8".toMediaType()
             val requestBody = jsonBody.toRequestBody(mediaType)
@@ -325,20 +339,8 @@ class AntminerClient {
             destinationFile.parentFile?.mkdirs()
             if (destinationFile.exists()) destinationFile.delete()
 
-            val authCache = ConcurrentHashMap<String, CachingAuthenticator>()
-            val credentials = Credentials(username, password)
-            val digestAuthenticator = DigestAuthenticator(credentials)
-            val cachingDecorator = CachingAuthenticatorDecorator(digestAuthenticator, authCache)
-
-            // Large archive download: 120s timeout
-            val client = OkHttpClient.Builder()
-                .connectionPool(SHARED_CONNECTION_POOL)
-                .authenticator(cachingDecorator)
-                .addInterceptor(AuthenticationCacheInterceptor(authCache))
-                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
+            // Large archive download: 120s read timeout variant of the cached client
+            val client = clientFor(cleanIp, username, password, readTimeoutSeconds = 120)
 
             val request = Request.Builder()
                 .url(targetUrl)
