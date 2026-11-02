@@ -1,45 +1,40 @@
 package com.example.antminerconnectiontest.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.alerts.MinerAlert
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.FleetSorting
+import com.example.antminerconnectiontest.domain.model.HeroSummary
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.NeedsPasswordMachine
 import com.example.antminerconnectiontest.domain.model.PhoneNicknames
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.FleetListCard
-import com.example.antminerconnectiontest.ui.components.HeroHashrateCard
-import com.example.antminerconnectiontest.ui.components.MetricCard
 import com.example.antminerconnectiontest.ui.components.MinerDataState
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.example.antminerconnectiontest.ui.components.MinerDataStateCard
-import com.example.antminerconnectiontest.ui.components.MinerDetailContent
+import com.example.antminerconnectiontest.ui.components.MinerDetailUi
+import com.example.antminerconnectiontest.ui.components.SourceChip
+import com.example.antminerconnectiontest.ui.components.StatusDot
+import com.example.antminerconnectiontest.ui.components.localMinerDetailUi
 import com.example.antminerconnectiontest.ui.components.toMinerDetailUi
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -47,16 +42,26 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * THE Home — the only one (v0.1.9). Everyone lands here in the single
- * shell: users with local miners, users who only view the cloud fleet,
- * and fresh installs with nothing configured yet. [profile] is the
- * active local miner, or null when none is connected; a selected fleet
- * machine that exists only as a cloud snapshot renders through the same
- * header/detail components with the same styling — the only markers of
- * its source are the REMOTE chip and the "last updated" line. When
- * nothing is configured yet, Home carries setup CONTENT (cloud setup
- * card, Add Miner card) inside the same shell instead of routing to a
- * separate first-run flow.
+ * THE Home — the only one (v0.1.9), rebuilt as Layout 4 "Dashboard
+ * Split" in v0.2.0 (user-approved mockups):
+ *
+ *   fixed:  fleet header strip → selected-machine HERO → alerts/states
+ *   scroll: the ranked fleet list (highest hashrate first, offline last)
+ *
+ * The hero is a SUMMARY ONLY (strict strip): nickname / worker, model,
+ * the LIVE-REMOTE chip, the cloud "last updated" line, status, the big
+ * real-time hashrate with the average beneath, uptime, and ONE health
+ * indicator. Boards & fans live on the Hardware tab, pool & shares on
+ * the Pools tab, logs on the Logs tab — none of that data is even
+ * modelled here (see HeroSummary).
+ *
+ * There is always ONE selected machine: the active local profile, else
+ * the explicitly selected fleet machine, else the first machine in the
+ * ranked fleet (first online, else first overall). Tapping a fleet row
+ * re-selects, and the hero + every tab rebind to the same machine.
+ *
+ * Setup CONTENT (cloud setup card, Add Miner card) still lives inside
+ * this same Home for fresh installs — never a separate first-run flow.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,8 +90,8 @@ fun HomeScreen(
     nicknameOverrides: Map<String, String> = emptyMap(),
     onEditNickname: (MergedMinerEntry) -> Unit = {},
     /** Known machines on this Wi-Fi that need their password typed once (auto-connect, v0.1.9). */
-    needsPasswordMachines: List<com.example.antminerconnectiontest.domain.model.NeedsPasswordMachine> = emptyList(),
-    onNeedsPasswordTap: (com.example.antminerconnectiontest.domain.model.NeedsPasswordMachine) -> Unit = {},
+    needsPasswordMachines: List<NeedsPasswordMachine> = emptyList(),
+    onNeedsPasswordTap: (NeedsPasswordMachine) -> Unit = {},
     /** Cloud setup card wiring (same ViewModel calls the Device tab uses). */
     onSaveCloudConfig: (webhookUrl: String, userName: String, relayEnabled: Boolean) -> Unit = { _, _, _ -> },
     onTestCloudConnection: (webhookUrl: String, userName: String) -> Unit = { _, _ -> },
@@ -94,22 +99,12 @@ fun HomeScreen(
     cloudTestMessage: String? = null,
     isCloudConnected: Boolean = false
 ) {
-    val summary = data?.summary
-    val stats = data?.stats
-    val isOnline = data?.isOnline == true
-    val isExplicitRemote = selectedRemoteMiner != null
-
-    // Remote display is ALWAYS a deliberate selection. The dashboard used
-    // to silently substitute remoteMiners.first() whenever the local miner
-    // went offline — the user could end up looking at a cloud feed (maybe
-    // another machine entirely) without choosing it. That swap is gone.
-    //
-    // The one designed precedence: when the selected snapshot is the SAME
-    // machine as the active local profile and live local data for it has
-    // been fetched, the local data overwrites the snapshot for display —
-    // it is fresher. While local data is unavailable (still loading,
-    // miner offline), the snapshot shows. The banner below makes which
-    // one is on screen visible either way.
+    // Remote display is ALWAYS a deliberate selection (v0.1.9 rule,
+    // unchanged): no silent swap to a cloud feed. The one designed
+    // precedence: when the selected snapshot is the SAME machine as the
+    // active local profile and live local data for it has been fetched,
+    // the local data overwrites the snapshot for display — it is
+    // fresher. While local data is unavailable, the snapshot shows.
     val selectedEntry = selectedRemoteMiner?.let { snap ->
         mergedMiners.firstOrNull { it.remoteSnapshot?.id == snap.id }
     }
@@ -120,44 +115,17 @@ fun HomeScreen(
     } else {
         null
     }
-    // True when something is selected to head the page: the active local
-    // miner, or a fleet machine selected from the list. A selected
-    // snapshot whose machine is ALSO saved locally activates that
-    // profile (see selectRemoteMiner), so a header with no profile is a
-    // snapshot-only machine.
-    val hasSelection = profile != null || selectedRemoteMiner != null
-    val headerDisplayName = if (selectedRemoteMiner != null) {
-        selectedEntry?.displayName
-            ?: PhoneNicknames.displayName(nicknameOverrides, selectedEntry?.localProfile, selectedRemoteMiner)
-    } else if (profile != null) {
-        activeEntry?.displayName ?: PhoneNicknames.displayName(nicknameOverrides, profile, null)
-    } else {
-        ""
-    }
-    val headerHasCustomName = if (selectedRemoteMiner != null) {
-        PhoneNicknames.overrideFor(nicknameOverrides, selectedEntry?.localProfile, selectedRemoteMiner) != null ||
-            !selectedEntry?.localProfile?.nickname.isNullOrBlank()
-    } else {
-        profile != null &&
-            (PhoneNicknames.overrideFor(nicknameOverrides, profile, null) != null || profile.nickname.isNotBlank())
-    }
     val localWinsForSelectedRemote = selectedRemoteMiner != null &&
         profile != null &&
         selectedEntry?.localProfile?.id == profile.id &&
         data?.profileId == profile.id &&
         data?.isOnline == true
     val effectiveRemote = if (localWinsForSelectedRemote) null else selectedRemoteMiner
-
-    // A snapshot is on screen (the selection exists only as cloud data).
-    // Since v0.1.9 this is NOT a visual "mode": the same components and
-    // styling render it; only the REMOTE chip and the last-updated line
-    // in the header say where the data came from.
     val isSnapshotSelection = effectiveRemote != null
-    val isStaleCloud = isSnapshotSelection && effectiveRemote?.isStale == true
     val effectiveRetry = onRetry ?: onManualRefresh
 
-    // Tick every 5 s so the stale indicator can appear even when no new
-    // state arrives (e.g. polling silently stalled after the phone slept).
+    // Tick every 5 s so freshness/stale indicators can appear even when
+    // no new state arrives (e.g. polling silently stalled after sleep).
     var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -168,141 +136,79 @@ fun HomeScreen(
     // Older than ~2 poll cycles (2 x 15 s) without a refresh landing.
     val isStaleLocal = !isSnapshotSelection && profile != null && data != null && nowMs - data.lastUpdated > 30_000L
 
+    val sortedRows = remember(mergedMiners, nowMs) {
+        FleetSorting.sortEntries(mergedMiners, nowMs)
+    }
+    // Default selection (approved model): with no explicit selection the
+    // hero shows the first machine of the ranked fleet — online first by
+    // hashrate, offline last — until the user taps a row (or the
+    // ViewModel's default-selection settles the same choice).
+    val defaultRow = sortedRows.firstOrNull()
+
+    val selectedDisplayName = if (selectedRemoteMiner != null) {
+        selectedEntry?.displayName
+            ?: PhoneNicknames.displayName(nicknameOverrides, selectedEntry?.localProfile, selectedRemoteMiner)
+    } else if (profile != null) {
+        activeEntry?.displayName ?: PhoneNicknames.displayName(nicknameOverrides, profile, null)
+    } else {
+        ""
+    }
+
+    val heroDetail: MinerDetailUi? = when {
+        effectiveRemote != null -> effectiveRemote.toMinerDetailUi(displayName = selectedDisplayName)
+        profile != null -> localMinerDetailUi(profile, data, selectedDisplayName)
+        defaultRow?.entry?.remoteSnapshot != null ->
+            defaultRow.entry.remoteSnapshot!!.toMinerDetailUi(displayName = defaultRow.displayName)
+        defaultRow?.entry?.localProfile != null ->
+            localMinerDetailUi(defaultRow.entry.localProfile!!, null, defaultRow.displayName)
+        else -> null
+    }
+    val heroSummary = heroDetail?.let { HeroSummary.from(it) }
+    val heroEntry = when {
+        effectiveRemote != null -> selectedEntry
+        profile != null -> activeEntry
+        else -> defaultRow?.entry
+    }
+    val heroSnapshot = effectiveRemote
+        ?: defaultRow?.entry?.remoteSnapshot?.takeIf { profile == null && selectedRemoteMiner == null }
+
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
-    // Worker identity shown as a chip next to a custom display name —
-    // for a snapshot it is the row's worker name (never a device UUID).
-    val headerWorkerName = when {
-        effectiveRemote != null -> effectiveRemote.id.trim()
-            .takeIf { it.isNotBlank() && !com.example.antminerconnectiontest.domain.model.MinerMerge.isDeviceId(it) }
-            ?: com.example.antminerconnectiontest.domain.model.MinerMerge.workerIdentity(effectiveRemote)
-            ?: ""
-        profile != null -> profile.workerName
-        else -> ""
-    }
-    // Online for the header dot: a snapshot counts online when its data
-    // is fresh and hashing — the same rule the unified detail applies.
-    val headerOnline = if (effectiveRemote != null) {
-        !effectiveRemote.isStale && effectiveRemote.effectiveHashrate5s > 0.0
-    } else {
-        isOnline
-    }
-
-    // Compute active hashrate values (supports 2-minute stale watchdog)
-    val hashrate = if (isSnapshotSelection) {
-        effectiveRemote!!.effectiveHashrate5s
-    } else when {
-        (summary?.hashrate5s ?: 0.0) > 0.0 -> summary!!.hashrate5s
-        (stats?.chains?.sumOf { it.realHashrateTh } ?: 0.0) > 0.0 -> stats!!.chains.sumOf { it.realHashrateTh }
-        else -> summary?.hashrateAvg ?: 0.0
-    }
-
-    val avgRate = if (isSnapshotSelection) {
-        effectiveRemote!!.effectiveAvgHashrate
-    } else when {
-        (summary?.hashrateAvg ?: 0.0) > 0.0 -> summary!!.hashrateAvg
-        (summary?.hashrate30m ?: 0.0) > 0.0 -> summary!!.hashrate30m
-        else -> hashrate
-    }
-
-    val idealRate = when {
-        // Snapshot selection: the relayed ideal (v0.1.6 telemetry) is
-        // the real nameplate rate for the machine; only rows written
-        // before it existed fall through to the generic default.
-        isSnapshotSelection && (effectiveRemote?.idealHashrate ?: 0.0) > 0.0 -> effectiveRemote!!.idealHashrate!!
-        (summary?.hashrateIdeal ?: 0.0) > 0.0 -> summary!!.hashrateIdeal
-        (stats?.chains?.sumOf { it.idealHashrateTh } ?: 0.0) > 0.0 -> stats!!.chains.sumOf { it.idealHashrateTh }
-        else -> 120.0
-    }
-
-    val displayTemp = if (isSnapshotSelection) effectiveRemote!!.maxTemp else (stats?.maxChipTemp ?: 0)
-    val displayFan = if (isSnapshotSelection) effectiveRemote!!.maxFan else (stats?.maxFanRpm ?: 0)
-
-    // Scrollable layout inside pull-to-refresh. This used to be a fixed,
-    // non-scrollable SpaceBetween column with hard-coded text sizes, which
-    // clipped content on small phones or with larger system font scaling.
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = onManualRefresh,
-        modifier = Modifier.fillMaxSize()
-    ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // ── Fixed region: fleet strip, hero, state cards ──────────────
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 0. Fleet header: total hashrate of the online fleet and the
-            // cloud account chip (who this phone relays as, and whether
-            // the relay is on) — the fleet is the home, the selected
-            // machine's dashboard follows below.
             FleetHeaderCard(
                 mergedMiners = mergedMiners,
                 cloudConfig = cloudConfig,
                 nowMs = nowMs
             )
 
-            // 1a. Needs-password cards (auto-connect, v0.1.9): known
-            // machines on this Wi-Fi that rejected the phone's
-            // credentials. Tapping one opens the credential entry with
-            // the IP prefilled — enter it once, auto-connect takes over.
+            // Needs-password cards (auto-connect, v0.1.9): known machines
+            // on this Wi-Fi that rejected the phone's credentials.
+            // Tapping one opens the credential entry with the IP
+            // prefilled — enter it once, auto-connect takes over.
             needsPasswordMachines.forEach { machine ->
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = SolidColor(WarningAmber.copy(alpha = 0.6f))
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onNeedsPasswordTap(machine) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = WarningAmber,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${machine.displayName} needs its password",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Found at ${machine.ip} on this Wi-Fi" +
-                                    if (machine.ownerUser.isNotBlank()) " • Uploads as ${machine.ownerUser}" else "",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = LocalDataFontFamily.current,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = "Enter password",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
+                NeedsPasswordCard(machine = machine, onClick = { onNeedsPasswordTap(machine) })
             }
 
-            // 1b. Setup CONTENT for a fresh install — inside the same
-            // Home, never a separate first-run flow (v0.1.9): the cloud
-            // setup card while no relay user name is set, and the Add
-            // Miner card while no local miner exists.
-            if (!hasSelection) {
+            if (heroSummary != null) {
+                SelectedMachineHero(
+                    summary = heroSummary,
+                    isStaleLocal = isStaleLocal,
+                    themeMode = themeMode,
+                    isRefreshing = isRefreshing,
+                    onToggleTheme = onToggleTheme,
+                    onManualRefresh = onManualRefresh,
+                    onEditNickname = heroEntry?.let { entry -> { onEditNickname(entry) } }
+                )
+            } else {
+                // Setup CONTENT for a fresh install — inside the same
+                // Home, never a separate first-run flow (v0.1.9): the
+                // cloud setup card while no relay user name is set, and
+                // the Add Miner card while no local miner exists.
                 if (cloudConfig.userName.isBlank()) {
                     HomeCloudSetupCard(
                         cloudConfig = cloudConfig,
@@ -318,208 +224,10 @@ fun HomeScreen(
                 }
             }
 
-            // 1. Miner Header Bar (Compact & Static) — shown whenever a
-            // machine is selected, local or snapshot, in ONE styling:
-            // a snapshot differs only by its REMOTE chip and the
-            // "last updated" line under the subtitle.
-            if (hasSelection) {
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = CardDefaults.outlinedCardBorder().copy(
-                    brush = SolidColor(if (isStaleCloud) MaterialTheme.colorScheme.error.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Status Indicator & Name
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (isStaleCloud) MaterialTheme.colorScheme.error else if (headerOnline) AntminerEmerald else MaterialTheme.colorScheme.error)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = headerDisplayName,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                if (isSnapshotSelection) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = "REMOTE",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                                if (headerWorkerName.isNotBlank() && (headerHasCustomName || headerDisplayName != headerWorkerName)) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = headerWorkerName,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = LocalDataFontFamily.current,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = if (isSnapshotSelection) {
-                                        listOf(effectiveRemote!!.ip, "Owner: ${effectiveRemote.user}")
-                                            .filter { it.isNotBlank() }
-                                            .joinToString(" • ")
-                                    } else {
-                                        profile?.host ?: ""
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = LocalDataFontFamily.current,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                if (!isSnapshotSelection && profile != null && profile.location.isNotBlank() && profile.location != "Default Location") {
-                                    Text(
-                                        text = " • ${profile.location}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            if (isSnapshotSelection) {
-                                Text(
-                                    text = "Updated ${effectiveRemote!!.timeAgoFormatted} · via relay" +
-                                        if (isStaleCloud) " — signal lost (>2m), values may be stale" else "",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isStaleCloud) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    // Header Action Buttons (Nickname + Theme Toggle + Refresh)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val nicknameTarget = if (isSnapshotSelection) selectedEntry else activeEntry
-                        if (nicknameTarget != null) {
-                            IconButton(
-                                onClick = { onEditNickname(nicknameTarget) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Set nickname on this phone",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-
-                        IconButton(onClick = onToggleTheme, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                imageVector = if (themeMode == ThemeMode.LIGHT) Icons.Default.DarkMode else Icons.Default.LightMode,
-                                contentDescription = "Toggle Theme",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        IconButton(onClick = onManualRefresh, enabled = !isRefreshing, modifier = Modifier.size(32.dp)) {
-                            if (isRefreshing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Refresh",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            }
-
-            // Merged selection where live LOCAL data won over the machine's
-            // cloud snapshot: say so on screen — precedence is visible,
-            // never a silent swap in either direction.
-            if (selectedRemoteMiner != null && !isSnapshotSelection) {
-                Surface(
-                    color = AntminerEmerald.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(10.dp),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = SolidColor(AntminerEmerald.copy(alpha = 0.4f))
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Wifi,
-                                contentDescription = null,
-                                tint = AntminerEmerald,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column {
-                                Text(
-                                    text = "LOCAL LIVE — SAME MACHINE",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AntminerEmerald
-                                )
-                                Text(
-                                    text = "Showing live data from this miner • Its cloud snapshot is kept as fallback",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        TextButton(
-                            onClick = onClearRemoteMinerView,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                            modifier = Modifier.height(26.dp)
-                        ) {
-                            Text("Clear", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-
-            // 1c. Loading / error state for the local miner (never for a
-            // snapshot selection): a first fetch in flight shows progress;
-            // a failed fetch shows the error with Retry instead of a fake
-            // "dead miner" dashboard.
+            // Loading / error state for the local miner (never for a
+            // snapshot selection): a first fetch in flight shows
+            // progress; a failed fetch shows the error with Retry
+            // instead of a fake "dead miner" dashboard.
             if (!isSnapshotSelection && profile != null) {
                 if (data == null) {
                     if (dashboardError != null) {
@@ -538,11 +246,11 @@ fun HomeScreen(
                 } else if (dashboardError != null) {
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -563,7 +271,7 @@ fun HomeScreen(
                 }
             }
 
-            // 2. Active Alert Banners (if any)
+            // Active alert banners (local monitoring only, as before).
             AnimatedVisibility(visible = alerts.isNotEmpty() && !isSnapshotSelection) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     alerts.take(2).forEach { alert ->
@@ -571,132 +279,341 @@ fun HomeScreen(
                     }
                 }
             }
+        }
 
-            // 3. Hero + metrics for the local machine, or — for a
-            // snapshot selection — the SAME unified detail (v0.1.7): one
-            // machine, one presentation; only the data source differs.
-            // Home's header bar above already carries the name/source
-            // line, so the detail header is not repeated here.
-            if (isSnapshotSelection) {
-                MinerDetailContent(
-                    detail = effectiveRemote!!.toMinerDetailUi(displayName = headerDisplayName),
-                    showHeader = false,
-                    onEditNickname = { selectedEntry?.let(onEditNickname) }
-                )
-            } else if (profile != null) {
-                HeroHashrateCard(
-                    hashrate = hashrate,
-                    avgRate = avgRate,
-                    idealRate = idealRate,
-                    isOnline = isOnline,
-                    isCloudMode = false,
-                    isStaleCloud = false
+        // ── Scrolling region: the ranked fleet list under the hero ────
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onManualRefresh,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                FleetListCard(
+                    mergedMiners = mergedMiners,
+                    activeProfile = profile,
+                    selectedRemoteMinerId = selectedRemoteMiner?.id,
+                    onSelectProfile = onSelectMinerProfile,
+                    onSelectRemoteMiner = onSelectRemoteMiner,
+                    onAddNewMiner = onOpenSetup,
+                    onEditNickname = onEditNickname
                 )
 
-                // 4. Quick Metrics 2x2 Grid
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    MetricCard(
-                        title = "Chip Temp Max",
-                        value = if (displayTemp > 0) "$displayTemp°C" else "--°C",
-                        icon = Icons.Default.Thermostat,
-                        modifier = Modifier.weight(1f),
-                        accentColor = if (displayTemp > 70) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
-                    MetricCard(
-                        title = "Max Fan RPM",
-                        value = if (displayFan > 0) "$displayFan RPM" else "-- RPM",
-                        icon = Icons.Default.Air,
-                        modifier = Modifier.weight(1f),
-                        accentColor = CyberCyan
+                // Empty fleet with cloud configured: say where miners
+                // come from instead of leaving a blank page.
+                if (mergedMiners.isEmpty() && cloudConfig.userName.isNotBlank()) {
+                    Text(
+                        text = "No miners yet. Machines appear here once a device at a site uploads them, when auto-connect finds them on this Wi-Fi, or when you add one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val totalHw = summary?.hwAll ?: stats?.totalHwErrors ?: 0L
-                    MetricCard(
-                        title = "HW Errors",
-                        value = "$totalHw",
-                        icon = Icons.Default.BugReport,
-                        modifier = Modifier.weight(1f),
-                        accentColor = if (totalHw > 100) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                // A cloud-only viewer still reaches Add Miner in-shell.
+                if (heroSummary != null && savedProfiles.isEmpty()) {
+                    HomeAddMinerCard(onOpenSetup = onOpenSetup)
+                }
+
+                // Footer sync line.
+                val footerText = when {
+                    heroSnapshot != null ->
+                        "Cloud sync: ${heroSnapshot.lastUpdated.ifBlank { timeFormatter.format(Date()) }} • via relay"
+                    data != null && profile != null ->
+                        "Last sync: ${timeFormatter.format(Date(data.lastUpdated))} • Polling 15s"
+                    profile != null -> "Connecting..."
+                    else -> "No miner connected"
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isStaleLocal) {
+                        StalePill()
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = footerText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isStaleLocal) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
-                    MetricCard(
-                        title = "Status",
-                        value = summary?.formattedUptime ?: "Online",
-                        icon = Icons.Default.Schedule,
-                        modifier = Modifier.weight(1f),
-                        accentColor = ElectricBlue
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StalePill() {
+    Surface(
+        color = WarningAmber.copy(alpha = 0.15f),
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        Text(
+            text = "STALE",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = WarningAmber,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
+
+/**
+ * The selected-machine HERO (v0.2.0, Layout 4): summary only — see
+ * [HeroSummary] for the exact, test-enforced field set. Identity and
+ * actions on top, the big real-time hashrate in the middle, and a
+ * single status / uptime / health row at the bottom.
+ */
+@Composable
+private fun SelectedMachineHero(
+    summary: HeroSummary,
+    isStaleLocal: Boolean,
+    themeMode: ThemeMode,
+    isRefreshing: Boolean,
+    onToggleTheme: () -> Unit,
+    onManualRefresh: () -> Unit,
+    onEditNickname: (() -> Unit)?
+) {
+    val dataFont = LocalDataFontFamily.current
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                StatusDot(isOnline = summary.isOnline, size = 10)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = summary.displayName,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    val workerLine = summary.workerName.takeIf {
+                        it.isNotBlank() && !it.equals(summary.displayName, ignoreCase = true)
+                    }
+                    if (workerLine != null) {
+                        Text(
+                            text = workerLine,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = dataFont,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (summary.modelName.isNotBlank()) {
+                        Text(
+                            text = summary.modelName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    summary.updatedLine?.let { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    SourceChip(isRemote = summary.isRemote)
+                    Row {
+                        if (onEditNickname != null) {
+                            IconButton(onClick = onEditNickname, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Set nickname on this phone",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        IconButton(onClick = onToggleTheme, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                imageVector = if (themeMode == ThemeMode.LIGHT) Icons.Default.DarkMode else Icons.Default.LightMode,
+                                contentDescription = "Toggle Theme",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        IconButton(onClick = onManualRefresh, enabled = !isRefreshing, modifier = Modifier.size(32.dp)) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            // 5. Combined fleet list: local + remote in one sorted list.
-            FleetListCard(
-                mergedMiners = mergedMiners,
-                activeProfile = profile,
-                selectedRemoteMinerId = selectedRemoteMiner?.id,
-                activePoolBrand = FleetSorting.poolBrandFromUrl(
-                    data?.pools?.firstOrNull { it.priority == 0 }?.url
-                        ?: data?.pools?.firstOrNull()?.url
-                ),
-                activeTempC = stats?.maxChipTemp,
-                onSelectProfile = onSelectMinerProfile,
-                onSelectRemoteMiner = onSelectRemoteMiner,
-                onAddNewMiner = onOpenSetup,
-                onEditNickname = onEditNickname
-            )
-
-            // Empty fleet with cloud configured: say where miners come
-            // from instead of leaving a blank page under the header.
-            if (mergedMiners.isEmpty() && cloudConfig.userName.isNotBlank()) {
+            Column {
                 Text(
-                    text = "No miners yet. Machines appear here once a device at a site uploads them, when auto-connect finds them on this Wi-Fi, or when you add one.",
+                    text = "REAL-TIME HASHRATE",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = if (summary.hashrateTh > 0.0) String.format(Locale.US, "%.1f", summary.hashrateTh) else "--",
+                        style = MaterialTheme.typography.displayLarge,
+                        fontFamily = dataFont,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "TH/s",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+                Text(
+                    text = "Avg " + if (summary.avgHashrateTh > 0.0) {
+                        String.format(Locale.US, "%.1f TH/s", summary.avgHashrateTh)
+                    } else {
+                        "--"
+                    },
                     style = MaterialTheme.typography.bodySmall,
+                    fontFamily = dataFont,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
 
-        // 6. Footer Sync Timestamp (Always at bottom)
-        val footerText = if (isSnapshotSelection) {
-            "Cloud sync: ${effectiveRemote!!.lastUpdated.ifBlank { timeFormatter.format(Date()) }} • via relay"
-        } else if (data != null) {
-            "Last sync: ${timeFormatter.format(Date(data.lastUpdated))} • Polling 15s"
-        } else if (profile != null) {
-            "Connecting..."
-        } else {
-            "No miner connected"
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (isStaleLocal) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Surface(
-                    color = WarningAmber.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(4.dp)
+                    color = if (summary.isOnline) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    else MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = "STALE",
+                        text = summary.statusText.uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = WarningAmber,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        color = if (summary.isOnline) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(6.dp))
+                if (summary.uptimeLabel.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = summary.uptimeLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = dataFont,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                // The ONE health indicator the hero may show.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val (dotColor, healthLabel) = when (summary.health) {
+                        HeroSummary.HealthState.HEALTHY ->
+                            MaterialTheme.colorScheme.primary to "Healthy"
+                        HeroSummary.HealthState.ISSUES ->
+                            MaterialTheme.colorScheme.tertiary to "Check miner"
+                        HeroSummary.HealthState.UNKNOWN ->
+                            MaterialTheme.colorScheme.onSurfaceVariant to "Health unknown"
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(dotColor)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = healthLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = dotColor
+                    )
+                }
+                if (isStaleLocal) {
+                    StalePill()
+                }
             }
-            Text(
-                text = footerText,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isStaleLocal) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.padding(bottom = 2.dp)
-            )
         }
     }
+}
+
+/** A known machine on this Wi-Fi that needs its password typed once (auto-connect). */
+@Composable
+private fun NeedsPasswordCard(
+    machine: NeedsPasswordMachine,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.12f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                tint = WarningAmber,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${machine.displayName} needs its password",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Found at ${machine.ip} on this Wi-Fi" +
+                        if (machine.ownerUser.isNotBlank()) " • Uploads as ${machine.ownerUser}" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = LocalDataFontFamily.current,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = "Enter password",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 
@@ -721,15 +638,12 @@ private fun HomeCloudSetupCard(
     var userNameInput by remember(cloudConfig.userName) { mutableStateOf(cloudConfig.userName) }
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(MaterialTheme.colorScheme.outline)
-        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -788,7 +702,7 @@ private fun HomeCloudSetupCard(
                 OutlinedButton(
                     onClick = { onTestCloudConnection(cloudConfig.webhookUrl, userNameInput.trim()) },
                     enabled = !isTestingCloud && userNameInput.isNotBlank(),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     if (isTestingCloud) {
@@ -811,7 +725,7 @@ private fun HomeCloudSetupCard(
                         )
                     },
                     enabled = userNameInput.isNotBlank(),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.weight(1f)
                 ) {
@@ -823,23 +737,20 @@ private fun HomeCloudSetupCard(
 }
 
 /**
- * Add Miner as Home CONTENT (v0.1.9): shown while no local miner exists.
- * The button opens the regular setup flow (scan / manual connect) —
- * on site, known miners usually appear by themselves via auto-connect,
- * so this is the manual path for brand-new machines.
+ * Add Miner as Home CONTENT (v0.1.9): the manual path for brand-new
+ * machines. The button opens the regular setup flow (scan / manual
+ * connect) — on site, known miners usually appear by themselves via
+ * auto-connect.
  */
 @Composable
 private fun HomeAddMinerCard(onOpenSetup: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(MaterialTheme.colorScheme.outline)
-        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -865,7 +776,7 @@ private fun HomeAddMinerCard(onOpenSetup: () -> Unit) {
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = onOpenSetup,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text("Add Miner", fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -874,6 +785,11 @@ private fun HomeAddMinerCard(onOpenSetup: () -> Unit) {
     }
 }
 
+/**
+ * The compact fleet strip (v0.2.0): total hashrate of the online fleet
+ * and the online count on the left, the relay account chip on the
+ * right — who this phone relays as, and whether the relay is on.
+ */
 @Composable
 private fun FleetHeaderCard(
     mergedMiners: List<MergedMinerEntry>,
@@ -893,33 +809,22 @@ private fun FleetHeaderCard(
     }
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(MaterialTheme.colorScheme.outline)
-        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(
-                    text = "FLEET HASHRATE · $onlineCount/${rows.size} ONLINE",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = if (totalTh > 0.0) String.format(Locale.US, "%.1f", totalTh) else "--",
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Black,
+                        style = MaterialTheme.typography.headlineMedium,
                         fontFamily = LocalDataFontFamily.current,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -932,13 +837,17 @@ private fun FleetHeaderCard(
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
+                Text(
+                    text = "Fleet · $onlineCount online",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Surface(
                 color = if (relayOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(6.dp),
-                border = CardDefaults.outlinedCardBorder().copy(
-                    brush = SolidColor(if (relayOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline)
-                )
+                shape = RoundedCornerShape(6.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -966,7 +875,6 @@ private fun FleetHeaderCard(
 
 @Composable
 private fun AlertBanner(alert: MinerAlert) {
-    val haptic = LocalHapticFeedback.current
     val (bg, fg, icon) = when (alert.severity) {
         com.example.antminerconnectiontest.domain.alerts.AlertSeverity.CRITICAL ->
             Triple(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.error, Icons.Default.Error)
@@ -978,7 +886,7 @@ private fun AlertBanner(alert: MinerAlert) {
 
     Surface(
         color = bg,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(

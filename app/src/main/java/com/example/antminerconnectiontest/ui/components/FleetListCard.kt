@@ -1,11 +1,9 @@
 package com.example.antminerconnectiontest.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -14,38 +12,38 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.model.FleetRow
 import com.example.antminerconnectiontest.domain.model.FleetSorting
+import com.example.antminerconnectiontest.domain.model.FleetSourceChip
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.LocalDataFontFamily
 import kotlinx.coroutines.delay
-import java.util.Locale
 
 /**
  * The combined fleet list: local and remote machines in ONE list, one
  * row per physical machine (see MinerMerge). Online machines sort by
  * hashrate descending; offline machines sit below them, most recently
- * updated first (see FleetSorting). Offline rows — remote ones in
- * particular — carry a dual-format last-updated label (relative + clock
- * time) so a dead machine says exactly when it was last heard from.
+ * updated first (see FleetSorting).
+ *
+ * v0.2.0 rows follow the approved mockup exactly (via
+ * [FleetSorting.rowUi]): status dot, nickname / worker, the LIVE or
+ * REMOTE chip, the hashrate (or "Offline"), and — offline only — the
+ * full "Last updated <relative> · <clock time>" line. Same surface
+ * colour for cloud and local rows: the chip is the only source signal,
+ * and colour carries status only. No temps, no pool names, no shares
+ * on Home — that detail lives on the tabs.
  */
 @Composable
 fun FleetListCard(
     mergedMiners: List<MergedMinerEntry>,
     activeProfile: MinerProfile?,
     selectedRemoteMinerId: String? = null,
-    /** Pool brand for the active profile's row, derived from its live pool URL. */
-    activePoolBrand: String? = null,
-    /** Live chip temp for the machine whose full local data is on screen. */
-    activeTempC: Int? = null,
     onSelectProfile: (MinerProfile) -> Unit,
     onSelectRemoteMiner: (RemoteMinerSnapshot) -> Unit = {},
     onAddNewMiner: () -> Unit,
@@ -65,81 +63,64 @@ fun FleetListCard(
         }
     }
 
-    val rows = remember(mergedMiners, nowMs, activeProfile?.id, activePoolBrand) {
-        FleetSorting.sortEntries(mergedMiners, nowMs) { entry ->
-            if (entry.localProfile?.id == activeProfile?.id) activePoolBrand else null
-        }
+    val rows = remember(mergedMiners, nowMs) {
+        FleetSorting.sortEntries(mergedMiners, nowMs)
     }
 
     val haptic = LocalHapticFeedback.current
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(MaterialTheme.colorScheme.outline)
-        ),
-        modifier = modifier.fillMaxWidth()
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "FLEET (${rows.size} ${if (rows.size == 1) "machine" else "machines"})",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelSmall,
-                        letterSpacing = 0.6.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Sorted by hashrate · offline last",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                TextButton(
-                    onClick = onAddNewMiner,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                    modifier = Modifier.height(24.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text("Add Unit", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-
-            rows.forEach { row ->
-                FleetRowItem(
-                    row = row,
-                    isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
-                    tempC = rowTempC(row, activeTempC),
-                    nowMs = nowMs,
-                    onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
-                    onClick = {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        val entry = row.entry
-                        val local = entry.localProfile
-                        val remote = entry.remoteSnapshot
-                        when {
-                            // Display data for this row is the snapshot:
-                            // select it (the ViewModel activates the local
-                            // profile too for merged machines, so live
-                            // local data can take over once fetched).
-                            remote != null && !entry.hasLiveLocalData && entry.localHashrateTh == null ->
-                                onSelectRemoteMiner(remote)
-                            local != null -> onSelectProfile(local)
-                            remote != null -> onSelectRemoteMiner(remote)
-                        }
-                    }
+            Column {
+                Text(
+                    text = "Fleet · ${rows.size} ${if (rows.size == 1) "machine" else "machines"}",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Sorted by hashrate · offline last",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            TextButton(onClick = onAddNewMiner) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(2.dp))
+                Text("Add Unit", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+
+        rows.forEach { row ->
+            FleetRowItem(
+                row = row,
+                isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
+                nowMs = nowMs,
+                onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
+                onClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    val entry = row.entry
+                    val local = entry.localProfile
+                    val remote = entry.remoteSnapshot
+                    when {
+                        // Display data for this row is the snapshot:
+                        // select it (the ViewModel activates the local
+                        // profile too for merged machines, so live
+                        // local data can take over once fetched).
+                        remote != null && !entry.hasLiveLocalData && entry.localHashrateTh == null ->
+                            onSelectRemoteMiner(remote)
+                        local != null -> onSelectProfile(local)
+                        remote != null -> onSelectRemoteMiner(remote)
+                    }
+                }
+            )
         }
     }
 }
@@ -157,36 +138,24 @@ private fun isRowActive(
     }
 }
 
-private fun rowTempC(row: FleetRow, activeTempC: Int?): Int? {
-    if (row.entry.hasLiveLocalData && activeTempC != null && activeTempC > 0) return activeTempC
-    return row.remoteTempC
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FleetRowItem(
     row: FleetRow,
     isActive: Boolean,
-    tempC: Int?,
     nowMs: Long,
     onEditNickname: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    val entry = row.entry
-    val snapshot = entry.remoteSnapshot
+    val ui = FleetSorting.rowUi(row, nowMs)
     val dataFont = LocalDataFontFamily.current
-    val statusColor = when {
-        !row.isOnline -> MaterialTheme.colorScheme.error
-        row.isRemoteOnly -> MaterialTheme.colorScheme.secondary
-        else -> MaterialTheme.colorScheme.primary
-    }
 
     Surface(
-        color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(8.dp),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-        ),
+        // Same surface for cloud and local rows (user's explicit pick);
+        // the selected row is the only tinted one.
+        color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        else MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
             .then(
@@ -197,152 +166,72 @@ private fun FleetRowItem(
                 }
             )
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(statusColor)
-                    )
-                    Spacer(modifier = Modifier.width(7.dp))
+            // Status colour only: green online, red offline.
+            StatusDot(isOnline = ui.isOnline, size = 9)
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = row.displayName,
+                        text = ui.displayName,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface,
-                        // The name yields first: chips and the hashrate keep
-                        // their full intrinsic width instead of being
-                        // squeezed until their text wraps mid-word.
+                        // The name yields first: the chip and the
+                        // hashrate keep their full intrinsic width.
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    if (row.hasLocal) FleetChip("LOCAL", MaterialTheme.colorScheme.primary)
-                    if (row.isMerged) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        FleetChip("CLOUD", MaterialTheme.colorScheme.secondary)
-                    } else if (row.isRemoteOnly) {
-                        FleetChip("REMOTE", MaterialTheme.colorScheme.secondary)
-                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    SourceChip(isRemote = ui.chip == FleetSourceChip.REMOTE)
                 }
-                Text(
-                    text = if (row.isOnline) String.format(Locale.US, "%.1f TH/s", row.hashrateTh) else "Offline",
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = dataFont,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    softWrap = false,
-                    color = if (row.isOnline) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
-                )
-                if (onEditNickname != null) {
-                    IconButton(
-                        onClick = onEditNickname,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Set nickname on this phone",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
-                }
-            }
-
-            // Pool identity line (see FleetSorting.rowSubtitle): brand
-            // + worker username normally — but never a repeat of the
-            // title when the title already is the worker identity.
-            val poolLine = FleetSorting.rowSubtitle(row)
-            if (poolLine.isNotBlank()) {
-                Text(
-                    text = poolLine,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = dataFont,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (tempC != null) {
+                if (ui.workerLine.isNotBlank()) {
                     Text(
-                        text = "$tempC°C",
+                        text = ui.workerLine,
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = dataFont,
-                        color = if (tempC > 70) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                 }
-                Text(
-                    text = statusText(row, snapshot),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // Freshness: online remote rows keep the short relative form;
-            // offline rows (remote above all) carry relative + clock time.
-            when {
-                row.isOnline && snapshot != null && !entry.hasLiveLocalData -> {
-                    val short = FleetSorting.formatUpdatedShort(row.lastUpdatedEpochMs, nowMs)
-                    if (short.isNotBlank()) {
-                        Text(
-                            text = short,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                !row.isOnline -> {
+                if (ui.freshnessLine.isNotBlank()) {
                     Text(
-                        text = FleetSorting.formatLastUpdated(row.lastUpdatedEpochMs, nowMs),
+                        text = ui.freshnessLine,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.tertiary
+                        fontWeight = if (ui.isOnline) FontWeight.Normal else FontWeight.SemiBold,
+                        color = if (ui.isOnline) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = ui.hashrateLabel,
+                fontWeight = FontWeight.Bold,
+                fontFamily = dataFont,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                softWrap = false,
+                color = if (ui.isOnline) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+            )
+            if (onEditNickname != null) {
+                IconButton(
+                    onClick = onEditNickname,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Set nickname on this phone",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun FleetChip(label: String, color: androidx.compose.ui.graphics.Color) {
-    Surface(
-        color = color.copy(alpha = 0.14f),
-        shape = RoundedCornerShape(4.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            softWrap = false,
-            color = color,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-        )
-    }
-}
-
-private fun statusText(row: FleetRow, snapshot: RemoteMinerSnapshot?): String {
-    return when {
-        row.isOnline && row.entry.hasLiveLocalData -> "Online · live local data"
-        row.isOnline && snapshot != null -> snapshot.status.ifBlank { "Online" }
-        row.isOnline -> "Online"
-        snapshot != null -> "Offline"
-        else -> "Offline · not answering locally"
     }
 }
