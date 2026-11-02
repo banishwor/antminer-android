@@ -9,13 +9,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
+import com.example.antminerconnectiontest.domain.model.PhoneNicknames
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.MinerSwitcherBottomSheet
+import com.example.antminerconnectiontest.ui.components.NicknameEditDialog
 import com.example.antminerconnectiontest.ui.device.DeviceScreen
 import com.example.antminerconnectiontest.ui.hardware.HardwareScreen
 import com.example.antminerconnectiontest.ui.home.HomeScreen
@@ -32,6 +38,11 @@ fun MainDashboardScreen(
     val uiState by viewModel.uiState.collectAsState()
     val mergedMiners by viewModel.mergedMiners.collectAsState()
     val activeProfile = uiState.activeProfile
+
+    // Phone-nickname editor (v0.1.7): the fleet row pencil / long-press,
+    // the detail header pencil, and the Home header pencil all open this
+    // one dialog for the tapped machine.
+    var nicknameEditEntry by remember { mutableStateOf<MergedMinerEntry?>(null) }
 
     // Refresh on return to the foreground when the dashboard is empty,
     // errored, or stale — instead of showing pre-sleep data indefinitely.
@@ -152,7 +163,9 @@ fun MainDashboardScreen(
                                 onSelectRemoteMiner = viewModel::selectRemoteMiner,
                                 onClearRemoteMinerView = viewModel::clearRemoteMinerView,
                                 onAddNewMiner = viewModel::disconnect,
-                                onToggleTheme = viewModel::toggleThemeMode
+                                onToggleTheme = viewModel::toggleThemeMode,
+                                nicknameOverrides = uiState.nicknameOverrides,
+                                onEditNickname = { nicknameEditEntry = it }
                             )
                         }
                         DashboardTab.HARDWARE -> {
@@ -232,6 +245,7 @@ fun MainDashboardScreen(
                             minerHashrates = uiState.minerHashrates,
                             mergedMiners = mergedMiners,
                             selectedRemoteMinerId = uiState.selectedRemoteMiner?.id,
+                            nicknameOverrides = uiState.nicknameOverrides,
                             onSelectProfile = { profile ->
                                 viewModel.selectSavedProfile(profile)
                             },
@@ -257,7 +271,8 @@ fun MainDashboardScreen(
                 RemoteViewScreen(
                     viewModel = viewModel,
                     uiState = uiState,
-                    mergedMiners = mergedMiners
+                    mergedMiners = mergedMiners,
+                    onEditNickname = { nicknameEditEntry = it }
                 )
             }
             // Local setup: scan/manual add flow. Reached by Scan starters,
@@ -274,6 +289,23 @@ fun MainDashboardScreen(
                     }
                 )
             }
+        }
+
+        // Phone-nickname editor, over whichever screen is current.
+        nicknameEditEntry?.let { entry ->
+            NicknameEditDialog(
+                machineLabel = entry.displayName,
+                currentNickname = PhoneNicknames.overrideFor(uiState.nicknameOverrides, entry) ?: "",
+                onSave = { name ->
+                    viewModel.setPhoneNickname(entry, name)
+                    nicknameEditEntry = null
+                },
+                onClear = {
+                    viewModel.setPhoneNickname(entry, "")
+                    nicknameEditEntry = null
+                },
+                onDismiss = { nicknameEditEntry = null }
+            )
         }
 
         // Update prompt: shown once per version per session, over

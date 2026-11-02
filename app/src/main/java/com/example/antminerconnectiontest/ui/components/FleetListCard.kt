@@ -1,12 +1,15 @@
 package com.example.antminerconnectiontest.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +49,8 @@ fun FleetListCard(
     onSelectProfile: (MinerProfile) -> Unit,
     onSelectRemoteMiner: (RemoteMinerSnapshot) -> Unit = {},
     onAddNewMiner: () -> Unit,
+    /** Opens the phone-nickname editor for a row's machine (v0.1.7); null hides the affordance. */
+    onEditNickname: ((MergedMinerEntry) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (mergedMiners.isEmpty()) return
@@ -116,6 +121,7 @@ fun FleetListCard(
                     isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
                     tempC = rowTempC(row, activeTempC),
                     nowMs = nowMs,
+                    onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
                     onClick = {
                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                         val entry = row.entry
@@ -156,12 +162,14 @@ private fun rowTempC(row: FleetRow, activeTempC: Int?): Int? {
     return row.remoteTempC
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FleetRowItem(
     row: FleetRow,
     isActive: Boolean,
     tempC: Int?,
     nowMs: Long,
+    onEditNickname: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val entry = row.entry
@@ -181,7 +189,13 @@ private fun FleetRowItem(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .then(
+                if (onEditNickname != null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onEditNickname)
+                } else {
+                    Modifier.clickable { onClick() }
+                }
+            )
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -233,6 +247,19 @@ private fun FleetRowItem(
                     softWrap = false,
                     color = if (row.isOnline) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
                 )
+                if (onEditNickname != null) {
+                    IconButton(
+                        onClick = onEditNickname,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Set nickname on this phone",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
             }
 
             // Pool identity: brand (when known) + worker username. A

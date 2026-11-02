@@ -114,6 +114,12 @@ data class AppUiState(
     val isLocalSetupOpen: Boolean = false,
     val remoteMiners: List<RemoteMinerSnapshot> = emptyList(),
     val selectedRemoteMiner: RemoteMinerSnapshot? = null,
+    /**
+     * Phone-only nicknames (v0.1.7): worker-identity key → the label this
+     * phone shows for that machine. Persisted in app-private storage via
+     * MinerStorageManager; never uploaded anywhere.
+     */
+    val nicknameOverrides: Map<String, String> = emptyMap(),
     val isTestingCloud: Boolean = false,
     val cloudTestMessage: String? = null,
     val isCloudConnected: Boolean = false,
@@ -191,12 +197,12 @@ class DashboardViewModel(
      */
     val mergedMiners: StateFlow<List<MergedMinerEntry>> = combine(
         profileManager.savedProfiles,
-        _uiState.map { it.remoteMiners to it.selectedRemoteMiner }.distinctUntilChanged(),
+        _uiState.map { Triple(it.remoteMiners, it.selectedRemoteMiner, it.nicknameOverrides) }.distinctUntilChanged(),
         multiMinerPoller.minerHashrates,
         repository.activeProfile,
         repository.dashboardData
     ) { profiles, remoteState, raceRates, active, data ->
-        val (remoteSnapshots, selectedSnapshot) = remoteState
+        val (remoteSnapshots, selectedSnapshot, nicknameOverrides) = remoteState
         MinerMerge.merge(
             profiles = profiles,
             // The selected snapshot takes part in the merge even if a sync
@@ -211,8 +217,34 @@ class DashboardViewModel(
                 },
                 raceHashrates = raceRates
             )
-        )
+        ).map { entry ->
+            // The phone's private nickname layer is applied last, as a
+            // display name only — merging above never sees it, so a
+            // rename can never split or duplicate a machine.
+            entry.copy(
+                phoneDisplayName = PhoneNicknames.displayName(
+                    nicknameOverrides, entry.localProfile, entry.remoteSnapshot
+                )
+            )
+        }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * Sets (blank = clears) this phone's private nickname for ANY machine
+     * in the fleet — a local profile or a remote-only machine alike. The
+     * label is stored under the machine's worker identity on this device
+     * only; it is never uploaded and never affects merging.
+     */
+    fun setPhoneNickname(entry: MergedMinerEntry, nickname: String) {
+        val key = PhoneNicknames.keyForEntry(entry)
+        if (key.isBlank()) return
+        val updated = PhoneNicknames.withNickname(_uiState.value.nicknameOverrides, key, nickname)
+        if (updated == _uiState.value.nicknameOverrides) return
+        _uiState.update { it.copy(nicknameOverrides = updated) }
+        try {
+            storageManager?.savePhoneNicknames(updated)
+        } catch (_: Throwable) {}
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         _uiState.update { it.copy(themeMode = mode) }
@@ -280,7 +312,8 @@ class DashboardViewModel(
                     cloudConfig = savedCloudConfig,
                     startChoice = savedStartChoice,
                     themeMode = savedThemeMode,
-                    savedProfiles = profileManager.savedProfiles.value
+                    savedProfiles = profileManager.savedProfiles.value,
+                    nicknameOverrides = storageManager.loadPhoneNicknames()
                 )
             }
             if (savedCloudConfig.isSyncEnabled) {
@@ -550,7 +583,9 @@ class DashboardViewModel(
                     val base = RemoteMinerSnapshot(
                         user = cfg.userName.trim(),
                         id = sheetId,
-                        nickname = profile.effectiveName,
+                        // Phone-only nicknames never upload (v0.1.7):
+                        // the nickname field carries the worker identity.
+                        nickname = sheetId,
                         ip = profile.host,
                         hashrate5s = rate5s,
                         avgHashrate = avgRate,

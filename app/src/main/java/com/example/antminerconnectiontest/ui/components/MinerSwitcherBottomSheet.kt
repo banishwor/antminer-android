@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.PhoneNicknames
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
 
@@ -36,6 +37,8 @@ fun MinerSwitcherBottomSheet(
     minerHashrates: Map<String, Double> = emptyMap(),
     mergedMiners: List<MergedMinerEntry> = emptyList(),
     selectedRemoteMinerId: String? = null,
+    /** This phone's private nicknames (v0.1.7) — display resolution only. */
+    nicknameOverrides: Map<String, String> = emptyMap(),
     onSelectProfile: (MinerProfile) -> Unit,
     onSelectRemoteMiner: (RemoteMinerSnapshot) -> Unit = {},
     onAddNewMiner: () -> Unit,
@@ -97,6 +100,7 @@ fun MinerSwitcherBottomSheet(
                 ProfileRowItem(
                     profile = activeProfile,
                     isActive = true,
+                    displayName = PhoneNicknames.displayName(nicknameOverrides, activeProfile, null),
                     onSelect = { onDismiss() },
                     onDelete = {}
                 )
@@ -110,6 +114,7 @@ fun MinerSwitcherBottomSheet(
                         ProfileRowItem(
                             profile = profile,
                             isActive = isActive,
+                            displayName = PhoneNicknames.displayName(nicknameOverrides, profile, null),
                             hashrateTh = minerHashrates[profile.id],
                             hasRemoteSnapshot = mergedMiners.any {
                                 it.localProfile?.id == profile.id && it.remoteSnapshot != null
@@ -160,11 +165,15 @@ fun MinerSwitcherBottomSheet(
 private fun ProfileRowItem(
     profile: MinerProfile,
     isActive: Boolean,
+    displayName: String = "",
     hashrateTh: Double? = null,
     hasRemoteSnapshot: Boolean = false,
     onSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val shownName = displayName.ifBlank { profile.effectiveName }
+    val hasCustomName = shownName != profile.workerName && profile.workerName.isNotBlank() &&
+        (profile.nickname.isNotBlank() || shownName != profile.effectiveName)
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -202,11 +211,12 @@ private fun ProfileRowItem(
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    // The name the user actually recognises (nickname, else
-                    // worker name) — rows used to show only the model name,
-                    // so two identical models were indistinguishable.
+                    // The name the user actually recognises (phone nickname,
+                    // else profile nickname, else worker name) — rows used to
+                    // show only the model name, so two identical models were
+                    // indistinguishable.
                     Text(
-                        text = profile.effectiveName,
+                        text = shownName,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -246,7 +256,7 @@ private fun ProfileRowItem(
                             )
                         }
                     }
-                    if (profile.nickname.isNotBlank() && profile.workerName.isNotBlank()) {
+                    if (hasCustomName) {
                         Text(
                             text = profile.workerName,
                             fontFamily = FontFamily.Monospace,
@@ -285,7 +295,7 @@ private fun ProfileRowItem(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text("Delete this miner?") },
             text = {
-                Text("\"${profile.effectiveName}\" (${profile.host}) will be removed from saved miners. This can't be undone.")
+                Text("\"$shownName\" (${profile.host}) will be removed from saved miners. This can't be undone.")
             },
             confirmButton = {
                 TextButton(
