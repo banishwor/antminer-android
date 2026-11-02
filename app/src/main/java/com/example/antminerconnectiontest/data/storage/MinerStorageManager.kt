@@ -2,12 +2,28 @@ package com.example.antminerconnectiontest.data.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Persists miner connection profiles and credentials locally to device storage.
+ *
+ * The profiles JSON (which contains the miners' passwords) is stored
+ * AES-256-GCM encrypted with a key held in the Android Keystore. Entries
+ * written by older, plaintext versions are migrated transparently: the first
+ * load that finds a legacy plaintext value parses it as before and rewrites
+ * it encrypted, so an app update never loses saved profiles. The prefs file
+ * is also excluded from Android backups (see res/xml/backup_rules.xml and
+ * data_extraction_rules.xml).
  */
 class MinerStorageManager(context: Context) {
 
@@ -16,11 +32,73 @@ class MinerStorageManager(context: Context) {
     companion object {
         private const val KEY_PROFILES = "key_miner_profiles"
         private const val KEY_ACTIVE_ID = "key_active_profile_id"
+
+        /** Marks an encrypted payload: prefix + Base64(IV || ciphertext). */
+        private const val ENCRYPTED_PREFIX = "enc_v1:"
+        private const val KEYSTORE_ALIAS = "antminer_profiles_key"
+        private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val GCM_TAG_BITS = 128
+    }
+
+    // --- Credential encryption (Android Keystore, AES-256-GCM) ---------------
+
+    private fun getOrCreateKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getEntry(KEYSTORE_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let {
+            return it.secretKey
+        }
+        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        keyGenerator.init(
+            KeyGenParameterSpec.Builder(
+                KEYSTORE_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return keyGenerator.generateKey()
+    }
+
+    private fun encryptToString(plainText: String): String {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        val payload = cipher.iv + cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+        return ENCRYPTED_PREFIX + Base64.encodeToString(payload, Base64.NO_WRAP)
+    }
+
+    private fun decryptFromString(stored: String): String {
+        val payload = Base64.decode(stored.removePrefix(ENCRYPTED_PREFIX), Base64.NO_WRAP)
+        val iv = payload.copyOfRange(0, 12) // GCM standard IV size produced by Cipher
+        val cipherText = payload.copyOfRange(12, payload.size)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+        return String(cipher.doFinal(cipherText), Charsets.UTF_8)
+    }
+
+    internal fun isEncryptedPayload(value: String?): Boolean {
+        return value != null && value.startsWith(ENCRYPTED_PREFIX)
     }
 
     fun loadSavedProfiles(): List<MinerProfile> {
-        val jsonString = prefs.getString(KEY_PROFILES, null) ?: return emptyList()
+        val stored = prefs.getString(KEY_PROFILES, null) ?: return emptyList()
+
+        val encrypted = isEncryptedPayload(stored)
+        val jsonString = if (encrypted) {
+            try {
+                decryptFromString(stored)
+            } catch (e: Exception) {
+                // Never fall back to parsing ciphertext as plaintext.
+                e.printStackTrace()
+                return emptyList()
+            }
+        } else {
+            stored
+        }
+
         val list = mutableListOf<MinerProfile>()
+        var parseFailed = false
         try {
             val array = JSONArray(jsonString)
             for (i in 0 until array.length()) {
@@ -43,7 +121,13 @@ class MinerStorageManager(context: Context) {
                 )
             }
         } catch (e: Exception) {
+            parseFailed = true
             e.printStackTrace()
+        }
+
+        if (!encrypted && !parseFailed) {
+            // Transparent migration: rewrite legacy plaintext entries encrypted.
+            saveProfiles(list)
         }
         return list
     }
@@ -66,7 +150,16 @@ class MinerStorageManager(context: Context) {
                 obj.put("cachedModel", profile.cachedModel ?: "")
                 array.put(obj)
             }
-            prefs.edit().putString(KEY_PROFILES, array.toString()).apply()
+            val json = array.toString()
+            val stored = try {
+                encryptToString(json)
+            } catch (e: Exception) {
+                // Keystore unavailable (should not happen on a real device):
+                // keep the app functional rather than dropping the profiles.
+                e.printStackTrace()
+                json
+            }
+            prefs.edit().putString(KEY_PROFILES, stored).apply()
         } catch (e: Exception) {
             e.printStackTrace()
         }

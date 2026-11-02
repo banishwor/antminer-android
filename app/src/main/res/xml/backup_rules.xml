@@ -1,13 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup rules for Android Auto Backup (this file applies before API 31;
+   API 31+ uses data_extraction_rules.xml).
+
+   The antminer_saved_profiles shared-preferences file holds the saved
+   miner profiles, including their device passwords. It must never leave
+   the device through cloud backup.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="sharedpref" path="antminer_saved_profiles.xml" />
 </full-backup-content>
