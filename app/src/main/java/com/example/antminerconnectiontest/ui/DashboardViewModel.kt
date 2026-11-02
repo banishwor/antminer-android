@@ -1174,7 +1174,7 @@ class DashboardViewModel(
 
         scanJob?.cancel()
         scanJob = viewModelScope.launch {
-            networkScanner.scanSubnet().collect { progress ->
+            networkScanner.scanSubnet(context = getApplication()).collect { progress ->
                 _uiState.update { it.copy(scannerState = progress) }
             }
         }

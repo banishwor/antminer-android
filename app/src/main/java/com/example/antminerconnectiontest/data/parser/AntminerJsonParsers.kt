@@ -47,7 +47,9 @@ object AntminerJsonParsers {
 
         val elapsed = summaryObj.optLong("elapsed", summaryObj.optLong("Elapsed", summaryObj.optLong("uptime", 0L)))
 
-        // GH/s to TH/s conversion (divide by 1000)
+        // Rates are converted to TH/s using the firmware's declared unit
+        // (rate_unit) when present; stock firmware reports GH/s.
+        val divisor = rateDivisor(extractRateUnit(summaryObj, root))
         val ghs5s = parseGhsField(
             summaryObj,
             "rate_5s", "GHS 5s", "GHS5s", "ghs_5s", "ghs5s",
@@ -86,10 +88,10 @@ object AntminerJsonParsers {
 
         return MinerSummary(
             elapsedSeconds = elapsed,
-            hashrate5s = ghs5s / 1000.0,
-            hashrateAvg = ghsAv / 1000.0,
-            hashrate30m = ghs30m / 1000.0,
-            hashrateIdeal = ghsTarget / 1000.0,
+            hashrate5s = ghs5s / divisor,
+            hashrateAvg = ghsAv / divisor,
+            hashrate30m = ghs30m / divisor,
+            hashrateIdeal = ghsTarget / divisor,
             hwAll = hwAll,
             bestShare = bestShare,
             rateHealth = rateHealth,
@@ -115,6 +117,8 @@ object AntminerJsonParsers {
             }
             else -> root
         }
+
+        val chainDivisor = rateDivisor(extractRateUnit(statsObj, root))
 
         val chains = mutableListOf<ChainStats>()
         var totalHwErrors = 0L
@@ -160,8 +164,8 @@ object AntminerJsonParsers {
                     ChainStats(
                         chainIndex = chainDisplayIdx,
                         rawIndex = rawIdx,
-                        realHashrateTh = realGhs / 1000.0,
-                        idealHashrateTh = idealGhs / 1000.0,
+                        realHashrateTh = realGhs / chainDivisor,
+                        idealHashrateTh = idealGhs / chainDivisor,
                         frequencyMhz = freq,
                         asicCount = asicCount,
                         asicStatusString = asicStr,
@@ -305,6 +309,7 @@ object AntminerJsonParsers {
 
         val rateObj = rateArray.getJSONObject(0)
         val unit = rateObj.optString("unit", "GH/s")
+        val divisor = rateDivisor(unit)
         val xAxisArray = rateObj.optJSONArray("xAxis") ?: JSONArray()
         val seriesArray = rateObj.optJSONArray("series") ?: JSONArray()
 
@@ -319,9 +324,9 @@ object AntminerJsonParsers {
             val dataArray = sObj.optJSONArray("data") ?: JSONArray()
             val dataPoints = mutableListOf<Double>()
             for (d in 0 until dataArray.length()) {
-                val valueGhs = dataArray.optDouble(d, 0.0)
-                // Convert GH/s to TH/s
-                dataPoints.add(valueGhs / 1000.0)
+                val rawValue = dataArray.optDouble(d, 0.0)
+                // Convert the series' declared unit to TH/s
+                dataPoints.add(rawValue / divisor)
             }
             seriesList.add(dataPoints)
         }
@@ -344,6 +349,32 @@ object AntminerJsonParsers {
     }
 
     // --- Helper parsing methods ---
+
+    /**
+     * Divisor that converts a firmware-reported hashrate into TH/s, based on
+     * the unit the firmware declares. Stock firmware reports GH/s (divide by
+     * 1000); some newer firmware reports TH/s directly, and assuming GH/s
+     * there displayed hashrates 1000x too small.
+     */
+    private fun rateDivisor(unit: String?): Double {
+        val u = unit?.uppercase()?.replace(" ", "") ?: return 1000.0
+        return when {
+            u.startsWith("TH") -> 1.0
+            u.startsWith("MH") -> 1_000_000.0
+            u.startsWith("KH") -> 1_000_000_000.0
+            u.startsWith("PH") -> 0.001
+            else -> 1000.0 // GH/s, and anything unrecognised
+        }
+    }
+
+    /** Finds a hashrate unit declaration ("rate_unit", "unit", ...) on an object or its root. */
+    private fun extractRateUnit(obj: JSONObject, root: JSONObject): String? {
+        for (key in listOf("rate_unit", "rateUnit", "unit", "hashrate_unit")) {
+            obj.optString(key, "").takeIf { it.isNotBlank() }?.let { return it }
+            root.optString(key, "").takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return null
+    }
 
     private fun parseGhsField(obj: JSONObject, vararg keys: String): Double {
         for (key in keys) {

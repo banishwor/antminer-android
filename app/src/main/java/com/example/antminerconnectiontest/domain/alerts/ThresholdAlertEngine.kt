@@ -61,19 +61,33 @@ object ThresholdAlertEngine {
             }
         }
 
-        // 3. Hashrate Drop Alert
+        // 3. Hashrate Drop / Stopped Alerts
         val summary = data.summary
-        if (summary != null && summary.hashrateIdeal > 0 && summary.hashrate5s > 0) {
-            val ratio = summary.hashrate5s / summary.hashrateIdeal
-            if (ratio < 0.80) {
+        if (summary != null && summary.hashrateIdeal > 0) {
+            if (summary.hashrate5s <= 0.0) {
+                // The old condition required hashrate5s > 0, so a miner whose
+                // chains stopped hashing entirely (0 TH/s while "online")
+                // never produced any alert.
                 alerts.add(
                     MinerAlert(
-                        id = "hashrate_drop",
-                        title = "Hashrate Below Target",
-                        description = "Current rate (${String.format("%.1f", summary.hashrate5s)} TH/s) is >20% below ideal target.",
-                        severity = AlertSeverity.WARNING
+                        id = "hashrate_stopped",
+                        title = "Hashrate Stopped",
+                        description = "Miner is online but reporting 0 TH/s — its chains may have stopped hashing.",
+                        severity = AlertSeverity.CRITICAL
                     )
                 )
+            } else {
+                val ratio = summary.hashrate5s / summary.hashrateIdeal
+                if (ratio < 0.80) {
+                    alerts.add(
+                        MinerAlert(
+                            id = "hashrate_drop",
+                            title = "Hashrate Below Target",
+                            description = "Current rate (${String.format("%.1f", summary.hashrate5s)} TH/s) is >20% below ideal target.",
+                            severity = AlertSeverity.WARNING
+                        )
+                    )
+                }
             }
         }
 
