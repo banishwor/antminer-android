@@ -1,8 +1,10 @@
 package com.example.antminerconnectiontest.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -194,7 +196,12 @@ fun HomeScreen(
             FleetHeaderCard(
                 mergedMiners = mergedMiners,
                 cloudConfig = cloudConfig,
-                nowMs = nowMs
+                nowMs = nowMs,
+                isDark = when (themeMode) {
+                    ThemeMode.DARK -> true
+                    ThemeMode.LIGHT -> false
+                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                }
             )
 
             // Needs-password cards (auto-connect, v0.1.9): known machines
@@ -396,11 +403,25 @@ private fun SelectedMachineHero(
     onEditNickname: (() -> Unit)?
 ) {
     val dataFont = LocalDataFontFamily.current
+    // Liquid Glass (v0.3.0): the hero is one of the two surfaces that
+    // get the full treatment — translucent fill (from the glass
+    // colour scheme), the bright specular edge, and on capable
+    // devices a blurred-wallpaper backdrop inside the panel. On
+    // glass-lite and in the Violet style this is the plain card.
+    val glass = LocalGlassSettings.current
+    val heroIsDark = when (themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(heroIsDark)) else null,
         modifier = Modifier.fillMaxWidth()
     ) {
+      Box {
+        GlassBackdrop()
         Column(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -582,6 +603,7 @@ private fun SelectedMachineHero(
                 }
             }
         }
+      }
     }
 }
 
@@ -679,7 +701,7 @@ private fun HomeCloudSetupCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "See your miners from anywhere: enter the user name your sites upload as. You can also do this later under Device.",
+                        text = "See your miners from anywhere: enter the user name your sites upload as. You can also do this later under Settings.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -811,7 +833,8 @@ private fun HomeAddMinerCard(onOpenSetup: () -> Unit) {
 private fun FleetHeaderCard(
     mergedMiners: List<MergedMinerEntry>,
     cloudConfig: CloudSyncConfig,
-    nowMs: Long
+    nowMs: Long,
+    isDark: Boolean = false
 ) {
     val rows = remember(mergedMiners, nowMs) {
         FleetSorting.sortEntries(mergedMiners, nowMs)
@@ -825,9 +848,14 @@ private fun FleetHeaderCard(
         else -> "Relay OFF"
     }
 
+    // Liquid Glass (v0.3.0): specular edge like the hero's; the fill
+    // translucency comes from the glass colour scheme. (No backdrop
+    // layer here — live blur is scoped to the hero + tab bar only.)
+    val glass = LocalGlassSettings.current
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(isDark)) else null,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(

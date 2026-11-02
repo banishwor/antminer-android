@@ -22,7 +22,10 @@ import com.example.antminerconnectiontest.domain.model.FleetSourceChip
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
+import androidx.compose.foundation.BorderStroke
 import com.example.antminerconnectiontest.theme.LocalDataFontFamily
+import com.example.antminerconnectiontest.theme.LocalGlassSettings
+import com.example.antminerconnectiontest.theme.glassEdgeBrush
 import kotlinx.coroutines.delay
 
 /**
@@ -149,6 +152,10 @@ private fun FleetRowItem(
 ) {
     val ui = FleetSorting.rowUi(row, nowMs)
     val dataFont = LocalDataFontFamily.current
+    // Liquid Glass (v0.3.0): rows get the translucent fill (from the
+    // glass colour scheme) + the specular edge highlight — but NO
+    // individual blur; live blur is scoped to the hero + tab bar.
+    val glass = LocalGlassSettings.current
 
     Surface(
         // Same surface for cloud and local rows (user's explicit pick);
@@ -156,6 +163,7 @@ private fun FleetRowItem(
         color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
         else MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
+        border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(glass.isDark)) else null,
         modifier = Modifier
             .fillMaxWidth()
             .then(

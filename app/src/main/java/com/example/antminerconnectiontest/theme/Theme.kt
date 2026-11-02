@@ -109,9 +109,84 @@ private val AntminerDarkColorScheme = darkColorScheme(
     onErrorContainer = Color(0xFFF2C9C5) // derived pale red
 )
 
+// ── Liquid Glass schemes (v0.3.0, round-5 mockup) ────────────────────
+// Same violet hues and status semantics as the solid schemes — only
+// the MATERIAL changes: surfaces become translucent fills that float
+// over the wallpaper (see GlassWallpaper), borders brighten toward a
+// specular edge. Background stays a solid base colour so window bars
+// and anything painted behind the wallpaper keep a sane tone; the
+// shell draws the wallpaper over it and makes its own containers
+// transparent. Surface-container slots are overridden too: Material3
+// defaults (bottom sheet, menus, cards in some versions) read them.
+private val GlassLightColorScheme = lightColorScheme(
+    primary = Color(0xFF6D28D9),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFEDE9FE).copy(alpha = 0.72f),
+    onPrimaryContainer = Color(0xFF4C2D8A),
+    secondary = Color(0xFF5B21B6),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFDDD6FE).copy(alpha = 0.66f),
+    onSecondaryContainer = Color(0xFF3B1F73),
+    tertiary = Color(0xFFBE7D1C),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFF9ECD2).copy(alpha = 0.78f),
+    onTertiaryContainer = Color(0xFF5C430A),
+    background = Color(0xFFE9E4FB), // glass base (wallpaper covers it)
+    onBackground = LightTextPrimary,
+    surface = Color.White.copy(alpha = 0.62f),
+    onSurface = LightTextPrimary,
+    surfaceVariant = Color(0xFFEDE9FE).copy(alpha = 0.55f),
+    onSurfaceVariant = LightTextSecondary,
+    surfaceContainerLowest = Color.White.copy(alpha = 0.45f),
+    surfaceContainerLow = Color.White.copy(alpha = 0.55f),
+    surfaceContainer = Color.White.copy(alpha = 0.62f),
+    surfaceContainerHigh = Color.White.copy(alpha = 0.72f),
+    surfaceContainerHighest = Color.White.copy(alpha = 0.82f),
+    outline = Color(0xFFB7A8E8),
+    outlineVariant = Color(0xFFD9D0F5),
+    error = ErrorRuby,
+    onError = Color.White,
+    errorContainer = Color(0xFFF9E9E9).copy(alpha = 0.85f),
+    onErrorContainer = Color(0xFF5F2323)
+)
+
+private val GlassDarkColorScheme = darkColorScheme(
+    primary = Color(0xFFA78BFA),
+    onPrimary = Color(0xFF1A0F38),
+    primaryContainer = Color(0xFF160B31).copy(alpha = 0.72f),
+    onPrimaryContainer = Color(0xFFC4B5FD),
+    secondary = Color(0xFFC4B5FD),
+    onSecondary = Color(0xFF1A0F38),
+    secondaryContainer = Color(0xFF171226).copy(alpha = 0.66f),
+    onSecondaryContainer = Color(0xFFB8A8E0),
+    tertiary = Color(0xFFE8A33D),
+    onTertiary = Color(0xFF241600),
+    tertiaryContainer = Color(0xFF33270C).copy(alpha = 0.78f),
+    onTertiaryContainer = Color(0xFFF7E8C3),
+    background = Color(0xFF000000), // glass base: true black
+    onBackground = DarkTextPrimary,
+    surface = Color(0xFF171226).copy(alpha = 0.55f),
+    onSurface = DarkTextPrimary,
+    surfaceVariant = Color(0xFF171226).copy(alpha = 0.48f),
+    onSurfaceVariant = DarkTextSecondary,
+    surfaceContainerLowest = Color(0xFF0A0A0B).copy(alpha = 0.45f),
+    surfaceContainerLow = Color(0xFF12101E).copy(alpha = 0.52f),
+    surfaceContainer = Color(0xFF171226).copy(alpha = 0.55f),
+    surfaceContainerHigh = Color(0xFF1E1836).copy(alpha = 0.65f),
+    surfaceContainerHighest = Color(0xFF251D42).copy(alpha = 0.75f),
+    outline = Color(0xFF4A3A75),
+    outlineVariant = Color(0xFF2C2149),
+    error = Color(0xFFE0655F),
+    onError = Color(0xFF2A0E0D),
+    errorContainer = Color(0xFF2A0E0D).copy(alpha = 0.85f),
+    onErrorContainer = Color(0xFFF2C9C5)
+)
+
 @Composable
 fun AntminerConnectionTestTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    appStyle: AppStyle = AppStyle.VIOLET,
+    glassTier: GlassTier = GlassTier.LITE,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
@@ -120,7 +195,13 @@ fun AntminerConnectionTestTheme(
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
 
-    val colorScheme = if (isDark) AntminerDarkColorScheme else AntminerLightColorScheme
+    val isGlass = appStyle == AppStyle.LIQUID_GLASS
+    val colorScheme = when {
+        isGlass && isDark -> GlassDarkColorScheme
+        isGlass -> GlassLightColorScheme
+        isDark -> AntminerDarkColorScheme
+        else -> AntminerLightColorScheme
+    }
 
     // Status / navigation bar appearance follows the APP theme, not the
     // system theme. enableEdgeToEdge()'s automatic style keys icon
@@ -147,7 +228,10 @@ fun AntminerConnectionTestTheme(
         }
     }
 
-    CompositionLocalProvider(LocalDataFontFamily provides FontFamily.Monospace) {
+    CompositionLocalProvider(
+        LocalDataFontFamily provides FontFamily.Monospace,
+        LocalGlassSettings provides GlassSettings(style = appStyle, tier = glassTier, isDark = isDark)
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = NordTypography,
