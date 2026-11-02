@@ -1,5 +1,8 @@
 package com.example.antminerconnectiontest.theme
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -8,10 +11,20 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 enum class ThemeMode {
     DARK,
@@ -116,6 +129,29 @@ fun AntminerConnectionTestTheme(
     val typography = if (isDark) DarkTypography else LightTypography
     val shapes = if (isDark) DarkShapes else LightShapes
     val dataFont: FontFamily = if (isDark) FontFamily.Monospace else FontFamily.Default
+
+    // Status / navigation bar appearance follows the APP theme, not the
+    // system theme. enableEdgeToEdge()'s automatic style keys icon
+    // brightness off the phone's day/night setting, so a user running the
+    // app in Dark while the phone is in light mode (or vice versa) got
+    // dark icons on a near-black bar — an illegible status bar. Setting
+    // the appearance flags explicitly per resolved theme fixes the
+    // contrast in both themes; the bar colors cover pre-edge-to-edge
+    // Android versions, and every screen's Scaffold insets keep content
+    // out from under the bars.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = view.context.findActivity()?.window ?: return@SideEffect
+            @Suppress("DEPRECATION")
+            window.statusBarColor = colorScheme.background.toArgb()
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = colorScheme.surface.toArgb()
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !isDark
+            controller.isAppearanceLightNavigationBars = !isDark
+        }
+    }
 
     CompositionLocalProvider(LocalDataFontFamily provides dataFont) {
         MaterialTheme(
