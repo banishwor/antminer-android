@@ -87,6 +87,33 @@ class RelayUploadTest {
         assertEquals("Banishwor.001", prepared.single().id)
     }
 
+    // ---- phone-only nicknames (v0.1.7): the nickname field is the identity ----
+
+    @Test
+    fun prepareSnapshots_rewritesNicknameToWorkerIdentity() {
+        // A snapshot built with a free-form (phone) nickname must reach
+        // the sheet carrying the worker identity in the nickname field —
+        // nicknames never leave the phone.
+        val prepared = RelayUpload.prepareSnapshots(
+            listOf(snapshot(id = "banishwor.001", nickname = "Hall 1, Left"))
+        )
+        assertEquals("banishwor.001", prepared.single().nickname)
+        assertEquals("banishwor.001", prepared.single().id)
+    }
+
+    @Test
+    fun prepareSnapshots_identityStillRecoverableFromNicknameByOldReaders() {
+        // Older app versions recover a row's worker name by parsing the
+        // nickname — with the identity in that field, recovery is exact.
+        val prepared = RelayUpload.prepareSnapshots(
+            listOf(snapshot(id = "banishwor.001", nickname = "My Secret Nickname"))
+        )
+        assertEquals("banishwor.001", MinerMerge.workerIdentity(prepared.single()))
+        assertTrue(
+            MinerMerge.remoteWorkerCandidates(prepared.single()).contains("banishwor.001")
+        )
+    }
+
     // ---- legacy duplicate selection (sheet healing) ----
 
     @Test

@@ -68,6 +68,30 @@ class CloudSyncManagerTest {
         assertEquals("Online", miners.single()["status"])
     }
 
+    @Test
+    fun buildUploadPayloadData_nicknameCarriesWorkerIdentityNotPhoneNickname() {
+        // Phone nicknames never leave the device (v0.1.7): even when the
+        // snapshot object carries one, the wire nickname field is the
+        // worker identity — which is also what older app versions parse
+        // to recover the worker name from a row.
+        val miner = RemoteMinerSnapshot(
+            user = "Master",
+            id = "banishwor.001",
+            nickname = "Hall 1, Left",
+            ip = "192.168.1.2",
+            hashrate5s = 121.6,
+            avgHashrate = 121.9,
+            maxTemp = 63,
+            maxFan = 5910,
+            status = "Online",
+            lastUpdated = ""
+        )
+        val payload = CloudSyncManager.buildUploadPayloadData("Master", listOf(miner))
+        @Suppress("UNCHECKED_CAST")
+        val miners = payload["miners"] as List<Map<String, Any>>
+        assertEquals("banishwor.001", miners.single()["nickname"])
+    }
+
     private fun extendedMiner() = RemoteMinerSnapshot(
         user = "Master",
         id = "banishwor.002",
