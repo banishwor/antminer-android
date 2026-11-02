@@ -100,8 +100,11 @@ class MinerRelayService : Service() {
 
                                         val rate5s = summary.hashrate5s
                                         val avgRate = if (summary.hashrateAvg > 0.0) summary.hashrateAvg else rate5s
-                                        val maxTemp = stats?.maxChipTemp ?: 60
-                                        val maxFan = stats?.maxFanRpm ?: 6000
+                                        // Unknown when the stats fetch failed:
+                                        // upload 0 (unknown), not an invented
+                                        // 60 °C / 6000 RPM reading.
+                                        val maxTemp = stats?.maxChipTemp ?: 0
+                                        val maxFan = stats?.maxFanRpm ?: 0
 
                                         if (rate5s > 0.0 || avgRate > 0.0) {
                                             snapshots.add(

@@ -371,8 +371,13 @@ class DashboardViewModel(
                 }
 
                 if (rate5s > 0.0 || avgRate > 0.0) {
-                    val maxTemp = if (isActive && isLocalOnline) currentData?.stats?.maxChipTemp ?: 60 else 60
-                    val maxFan = if (isActive && isLocalOnline) currentData?.stats?.maxFanRpm ?: 6000 else 6000
+                    // Only upload telemetry that was actually measured. For
+                    // non-active miners we only know the hashrate (race
+                    // poller), so temp/fan are unknown: report 0, which
+                    // consumers render as unknown. This used to fabricate
+                    // 60 °C / 6000 RPM for every non-active miner.
+                    val maxTemp = if (isActive && isLocalOnline) currentData?.stats?.maxChipTemp ?: 0 else 0
+                    val maxFan = if (isActive && isLocalOnline) currentData?.stats?.maxFanRpm ?: 0 else 0
                     RemoteMinerSnapshot(
                         user = cfg.userName.trim(),
                         id = profile.id,
