@@ -34,6 +34,7 @@ class MinerStorageManager(context: Context) {
         private const val KEY_ACTIVE_ID = "key_active_profile_id"
         private const val KEY_START_CHOICE = "key_start_choice"
         private const val KEY_THEME_MODE = "key_theme_mode"
+        private const val KEY_PHONE_NICKNAMES = "key_phone_nicknames"
 
         /** Marks an encrypted payload: prefix + Base64(IV || ciphertext). */
         private const val ENCRYPTED_PREFIX = "enc_v1:"
@@ -195,6 +196,30 @@ class MinerStorageManager(context: Context) {
 
     fun saveThemeMode(modeName: String) {
         prefs.edit().putString(KEY_THEME_MODE, modeName).apply()
+    }
+
+    /**
+     * Phone-only nicknames (v0.1.7): the user's private per-machine
+     * labels, keyed by worker identity (see PhoneNicknames). They live
+     * in THIS prefs file on purpose: the whole file is already excluded
+     * from Android cloud backup and device-to-device transfer (see
+     * res/xml/backup_rules.xml and data_extraction_rules.xml), so the
+     * nicknames can never leave the device through backup either — and
+     * nothing ever puts them in an upload payload.
+     */
+    fun loadPhoneNicknames(): Map<String, String> {
+        return com.example.antminerconnectiontest.domain.model.PhoneNicknames.parse(
+            prefs.getString(KEY_PHONE_NICKNAMES, null)
+        )
+    }
+
+    fun savePhoneNicknames(overrides: Map<String, String>) {
+        prefs.edit()
+            .putString(
+                KEY_PHONE_NICKNAMES,
+                com.example.antminerconnectiontest.domain.model.PhoneNicknames.encode(overrides)
+            )
+            .apply()
     }
 
     fun getLastActiveProfileId(): String? {

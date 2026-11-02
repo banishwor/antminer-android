@@ -27,7 +27,14 @@ data class MergedMinerEntry(
      * this machine — the strongest form of "local data is available", used
      * to let local data overwrite the remote snapshot in the dashboard hero.
      */
-    val hasLiveLocalData: Boolean = false
+    val hasLiveLocalData: Boolean = false,
+    /**
+     * Display name resolved with this phone's private nickname layer
+     * applied (see [PhoneNicknames.displayName]). Set by the ViewModel,
+     * which owns the override store; null in pure merge contexts (unit
+     * tests), where [displayName] falls back to the pre-v0.1.7 chain.
+     */
+    val phoneDisplayName: String? = null
 ) {
     val isMerged: Boolean get() = localProfile != null && remoteSnapshot != null
 
@@ -36,7 +43,7 @@ data class MergedMinerEntry(
         get() = localHashrateTh ?: remoteSnapshot?.effectiveHashrate5s ?: 0.0
 
     val displayName: String
-        get() = localProfile?.effectiveName ?: remoteSnapshot?.effectiveDisplayName ?: "Antminer"
+        get() = phoneDisplayName ?: localProfile?.effectiveName ?: remoteSnapshot?.effectiveDisplayName ?: "Antminer"
 }
 
 /**
