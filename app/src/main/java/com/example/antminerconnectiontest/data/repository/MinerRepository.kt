@@ -29,6 +29,15 @@ class MinerRepository(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    /**
+     * Last refresh failure for the currently active profile, or null when the
+     * last refresh succeeded (or none has run yet). This is what lets the UI
+     * distinguish "still loading" from "the miner could not be reached" —
+     * previously a failed first fetch left no trace at all.
+     */
+    private val _dashboardError = MutableStateFlow<String?>(null)
+    val dashboardError: StateFlow<String?> = _dashboardError.asStateFlow()
+
     private var pollingJob: Job? = null
     var onProfileAutoUpdated: ((MinerProfile) -> Unit)? = null
 
@@ -64,6 +73,7 @@ class MinerRepository(
             // (rename, IP self-heal, auto-capture) keep the current data on
             // screen instead of blanking the dashboard until the next poll.
             _dashboardData.value = null
+            _dashboardError.value = null
         }
     }
 
@@ -73,6 +83,7 @@ class MinerRepository(
         stopPolling()
         _activeProfile.value = null
         _dashboardData.value = null
+        _dashboardError.value = null
     }
 
     /**
@@ -133,22 +144,32 @@ class MinerRepository(
             val statsDeferred = async { readApi.getStats(profile) }
             val warningsDeferred = async { readApi.getWarnings(profile) }
             val chartDeferred = async { readApi.getChart(profile) }
-            val systemInfoDeferred = async {
-                // If system info is already cached, we can refresh it or reuse
-                if (previousData?.systemInfo != null) {
-                    readApi.getSystemInfo(profile).getOrDefault(previousData.systemInfo)
-                } else {
-                    readApi.getSystemInfo(profile).getOrNull()
-                }
-            }
+            val systemInfoDeferred = async { readApi.getSystemInfo(profile) }
             val poolsDeferred = async { readApi.getPools(profile) }
 
             val summaryRes = summaryDeferred.await()
             val statsRes = statsDeferred.await()
             val warningsRes = warningsDeferred.await()
             val chartRes = chartDeferred.await()
-            val sysInfo = systemInfoDeferred.await()
+            val sysInfoRes = systemInfoDeferred.await()
             val poolsRes = poolsDeferred.await()
+
+            // Record which endpoints failed so the UI can say what went wrong
+            // instead of silently showing an all-blank dashboard.
+            fun recordFailure(label: String, res: Result<*>) {
+                if (res.isFailure) {
+                    partialErrors.add("$label: ${res.exceptionOrNull()?.message ?: "request failed"}")
+                }
+            }
+            recordFailure("Summary", summaryRes)
+            recordFailure("Stats", statsRes)
+            recordFailure("Pools", poolsRes)
+            recordFailure("Warnings", warningsRes)
+            recordFailure("Chart", chartRes)
+            recordFailure("System info", sysInfoRes)
+
+            // Fall back to the previously fetched system info when available.
+            val sysInfo = sysInfoRes.getOrNull() ?: previousData?.systemInfo
 
             val isAnySuccess = summaryRes.isSuccess || statsRes.isSuccess || poolsRes.isSuccess
 
@@ -181,6 +202,11 @@ class MinerRepository(
             }
 
             _dashboardData.value = updatedData
+            _dashboardError.value = if (isAnySuccess) {
+                null
+            } else {
+                "Could not connect to miner at ${profile.host}"
+            }
 
             if (isAnySuccess) {
                 val firstPoolUser = pools.firstOrNull()?.user
@@ -203,14 +229,23 @@ class MinerRepository(
             throw e
         } catch (e: Exception) {
             if (isCurrentGeneration(generation, profile.id)) {
+                val message = e.message ?: "Unknown connection error"
+                _dashboardError.value = message
                 _dashboardData.update { current ->
-                    if (current?.profileId == profile.id) {
-                        current.copy(
+                    when {
+                        current?.profileId == profile.id -> current.copy(
                             isOnline = false,
-                            partialErrors = listOf(e.message ?: "Unknown connection error")
+                            partialErrors = listOf(message)
                         )
-                    } else {
-                        current
+                        // First load: publish an explicit offline snapshot so
+                        // the UI can show an error state with Retry instead of
+                        // sitting on a null that looks like a dead miner.
+                        current == null -> MinerDashboardData(
+                            profileId = profile.id,
+                            isOnline = false,
+                            partialErrors = listOf(message)
+                        )
+                        else -> current
                     }
                 }
             }

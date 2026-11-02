@@ -28,6 +28,8 @@ import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.HashrateRaceCard
+import com.example.antminerconnectiontest.ui.components.MinerDataState
+import com.example.antminerconnectiontest.ui.components.MinerDataStateCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,6 +45,8 @@ fun HomeScreen(
     alerts: List<MinerAlert>,
     themeMode: ThemeMode,
     isRefreshing: Boolean,
+    dashboardError: String? = null,
+    onRetry: (() -> Unit)? = null,
     onManualRefresh: () -> Unit,
     onOpenMinerSwitcher: () -> Unit,
     onSelectMinerProfile: (MinerProfile) -> Unit,
@@ -65,6 +69,7 @@ fun HomeScreen(
 
     val isCloudMode = effectiveRemote != null
     val isStaleCloud = isCloudMode && effectiveRemote?.isStale == true
+    val effectiveRetry = onRetry ?: onManualRefresh
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
@@ -261,6 +266,52 @@ fun HomeScreen(
                                     color = if (isStaleCloud) MaterialTheme.colorScheme.error else CyberCyan,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1b. Loading / error state for the local miner (never in cloud mode):
+            // a first fetch in flight shows progress; a failed fetch shows the
+            // error with Retry instead of a fake "dead miner" dashboard.
+            if (!isCloudMode) {
+                if (data == null) {
+                    if (dashboardError != null) {
+                        MinerDataStateCard(
+                            state = MinerDataState.ERROR,
+                            host = profile.host,
+                            message = dashboardError,
+                            onRetry = effectiveRetry
+                        )
+                    } else {
+                        MinerDataStateCard(
+                            state = MinerDataState.LOADING,
+                            host = profile.host
+                        )
+                    }
+                } else if (dashboardError != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = dashboardError,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = effectiveRetry,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text("Retry", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

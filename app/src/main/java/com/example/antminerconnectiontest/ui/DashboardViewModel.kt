@@ -76,6 +76,7 @@ data class AppUiState(
     val minerHashrates: Map<String, Double> = emptyMap(),
     val isProfileSwitcherOpen: Boolean = false,
     val dashboardData: MinerDashboardData? = null,
+    val dashboardError: String? = null,
     val activeAlerts: List<MinerAlert> = emptyList(),
     val isRefreshing: Boolean = false,
     val selectedTab: DashboardTab = DashboardTab.HOME,
@@ -265,6 +266,14 @@ class DashboardViewModel(
             }
         }
 
+        // Mirror the repository's published refresh error so the UI can show
+        // a real error state (with Retry) instead of a silent "--" dashboard.
+        viewModelScope.launch {
+            repository.dashboardError.collect { error ->
+                _uiState.update { it.copy(dashboardError = error) }
+            }
+        }
+
         // Auto-save any profile updates (e.g. newly captured workerName or MAC).
         // The repository only fires this for the currently active profile, but
         // guard here too: an auto-capture must never switch the visible miner.
@@ -275,14 +284,15 @@ class DashboardViewModel(
             }
         }
 
-        // Restore initial active profile if previously saved
+        // Restore initial active profile if previously saved. Always attempt
+        // the first fetch: if it cannot reach the miner, the repository now
+        // publishes an error the UI can show with Retry — gating this on a
+        // Wi-Fi check used to leave a silent blank dashboard on cold open.
         val initialProfile = profileManager.getActiveProfile()
         if (initialProfile != null) {
             repository.setActiveProfile(initialProfile)
             viewModelScope.launch {
-                if (isWifiConnected()) {
-                    repository.refreshDashboardData()
-                }
+                repository.refreshDashboardData()
             }
         }
 
@@ -1257,10 +1267,11 @@ class DashboardViewModel(
     }
 
     fun manualRefresh() {
+        // Always attempt the refresh. Failures are published as an error
+        // state by the repository; silently skipping the fetch on a negative
+        // Wi-Fi check made the refresh button look broken.
         viewModelScope.launch {
-            if (isWifiConnected()) {
-                repository.refreshDashboardData()
-            }
+            repository.refreshDashboardData()
             syncCloudNow()
         }
     }

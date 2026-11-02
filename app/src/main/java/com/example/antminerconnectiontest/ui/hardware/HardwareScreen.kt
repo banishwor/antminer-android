@@ -31,6 +31,8 @@ import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.AsicChipMatrix
 import com.example.antminerconnectiontest.ui.components.InteractiveHashrateChart
+import com.example.antminerconnectiontest.ui.components.MinerDataState
+import com.example.antminerconnectiontest.ui.components.MinerDataStateCard
 import java.util.Locale
 
 @Composable
@@ -38,7 +40,9 @@ fun HardwareScreen(
     profile: MinerProfile,
     data: MinerDashboardData?,
     isRefreshing: Boolean,
-    onManualRefresh: () -> Unit
+    onManualRefresh: () -> Unit,
+    dashboardError: String? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     val isOnline = data?.isOnline == true
     val stats = data?.stats
@@ -74,10 +78,23 @@ fun HardwareScreen(
                 }
             }
 
-            com.example.antminerconnectiontest.ui.components.CloudModeTabNotice(
-                tabTitle = "Hardware Analytics",
-                detailDescription = "individual ASIC chip matrices, real-time board voltages, and fan curves"
-            )
+            when {
+                data == null && dashboardError == null -> MinerDataStateCard(
+                    state = MinerDataState.LOADING,
+                    host = profile.host
+                )
+                dashboardError != null -> MinerDataStateCard(
+                    state = MinerDataState.ERROR,
+                    host = profile.host,
+                    message = dashboardError,
+                    onRetry = onRetry ?: onManualRefresh
+                )
+                else -> MinerDataStateCard(
+                    state = MinerDataState.OFFLINE,
+                    host = profile.host,
+                    onRetry = onRetry ?: onManualRefresh
+                )
+            }
         }
         return
     }

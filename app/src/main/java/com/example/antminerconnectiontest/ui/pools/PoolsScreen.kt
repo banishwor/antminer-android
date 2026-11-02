@@ -28,7 +28,9 @@ fun PoolsScreen(
     profile: MinerProfile,
     data: MinerDashboardData?,
     isRefreshing: Boolean,
-    onManualRefresh: () -> Unit
+    onManualRefresh: () -> Unit,
+    dashboardError: String? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     val isOnline = data?.isOnline == true
     val pools = data?.pools ?: emptyList()
@@ -62,10 +64,23 @@ fun PoolsScreen(
                 }
             }
 
-            com.example.antminerconnectiontest.ui.components.CloudModeTabNotice(
-                tabTitle = "Mining Pools",
-                detailDescription = "active stratum URLs, worker usernames, and pool acceptance rates"
-            )
+            when {
+                data == null && dashboardError == null -> com.example.antminerconnectiontest.ui.components.MinerDataStateCard(
+                    state = com.example.antminerconnectiontest.ui.components.MinerDataState.LOADING,
+                    host = profile.host
+                )
+                dashboardError != null -> com.example.antminerconnectiontest.ui.components.MinerDataStateCard(
+                    state = com.example.antminerconnectiontest.ui.components.MinerDataState.ERROR,
+                    host = profile.host,
+                    message = dashboardError,
+                    onRetry = onRetry ?: onManualRefresh
+                )
+                else -> com.example.antminerconnectiontest.ui.components.MinerDataStateCard(
+                    state = com.example.antminerconnectiontest.ui.components.MinerDataState.OFFLINE,
+                    host = profile.host,
+                    onRetry = onRetry ?: onManualRefresh
+                )
+            }
         }
         return
     }

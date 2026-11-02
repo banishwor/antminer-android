@@ -124,9 +124,11 @@ fun LogsScreen(
                 }
             }
 
-            com.example.antminerconnectiontest.ui.components.CloudModeTabNotice(
-                tabTitle = "Miner Console Logs",
-                detailDescription = "real-time kernel dmesg, system startup logs, and error traces"
+            com.example.antminerconnectiontest.ui.components.MinerDataStateCard(
+                state = com.example.antminerconnectiontest.ui.components.MinerDataState.OFFLINE,
+                host = profile.host,
+                message = "Logs need a live connection to the miner at ${profile.host}. Check that it's powered on and reachable, then retry.",
+                onRetry = onRefresh
             )
         }
         return

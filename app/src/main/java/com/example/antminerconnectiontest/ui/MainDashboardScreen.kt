@@ -128,6 +128,8 @@ fun MainDashboardScreen(
                                 alerts = uiState.activeAlerts,
                                 themeMode = uiState.themeMode,
                                 isRefreshing = uiState.isRefreshing,
+                                dashboardError = uiState.dashboardError,
+                                onRetry = viewModel::manualRefresh,
                                 onManualRefresh = viewModel::manualRefresh,
                                 onOpenMinerSwitcher = { viewModel.toggleProfileSwitcher(true) },
                                 onSelectMinerProfile = viewModel::selectSavedProfile,
@@ -142,7 +144,9 @@ fun MainDashboardScreen(
                                 profile = activeProfile,
                                 data = uiState.dashboardData,
                                 isRefreshing = uiState.isRefreshing,
-                                onManualRefresh = viewModel::manualRefresh
+                                onManualRefresh = viewModel::manualRefresh,
+                                dashboardError = uiState.dashboardError,
+                                onRetry = viewModel::manualRefresh
                             )
                         }
                         DashboardTab.POOLS -> {
@@ -150,7 +154,9 @@ fun MainDashboardScreen(
                                 profile = activeProfile,
                                 data = uiState.dashboardData,
                                 isRefreshing = uiState.isRefreshing,
-                                onManualRefresh = viewModel::manualRefresh
+                                onManualRefresh = viewModel::manualRefresh,
+                                dashboardError = uiState.dashboardError,
+                                onRetry = viewModel::manualRefresh
                             )
                         }
                         DashboardTab.LOGS -> {
