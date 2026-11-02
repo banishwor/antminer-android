@@ -167,4 +167,44 @@ class RelayUploadTest {
         assertTrue(RelayUpload.legacyDuplicateIds(fetched, "", listOf("banishwor.001")).isEmpty())
         assertTrue(RelayUpload.legacyDuplicateIds(fetched, "Master", emptyList()).isEmpty())
     }
+
+    // ---- cross-user upload guard (v0.1.9) ----
+
+    @Test
+    fun filterUploadable_ownMachinesAndBrandNewMachines_pass() {
+        val fleet = listOf(
+            snapshot(user = "Master", id = "banishwor.001"),
+            snapshot(user = "Tompokchao", id = "tompokchao.001")
+        )
+        val uploads = listOf(
+            snapshot(id = "banishwor.001"), // own row in the sheet
+            snapshot(id = "banishwor.002")  // not in the sheet yet — brand-new
+        )
+        val kept = RelayUpload.filterUploadable(uploads, "Master", fleet)
+        assertEquals(listOf("banishwor.001", "banishwor.002"), kept.map { it.id })
+    }
+
+    @Test
+    fun filterUploadable_anotherUsersMachine_isExcluded() {
+        // Auto-connected on site at Tompokchao's: fully usable locally,
+        // but uploading it as Master would fork its sheet row.
+        val fleet = listOf(snapshot(user = "Tompokchao", id = "tompokchao.001"))
+        val uploads = listOf(snapshot(id = "tompokchao.001"))
+        assertTrue(RelayUpload.filterUploadable(uploads, "Master", fleet).isEmpty())
+    }
+
+    @Test
+    fun filterUploadable_ownershipMatchIgnoresUserCaseAndWhitespace() {
+        val fleet = listOf(snapshot(user = " master ", id = "banishwor.001"))
+        val uploads = listOf(snapshot(id = "Banishwor.001"))
+        assertEquals(1, RelayUpload.filterUploadable(uploads, "Master", fleet).size)
+    }
+
+    @Test
+    fun filterUploadable_unknownFleetOrBlankUser_passesEverything() {
+        val uploads = listOf(snapshot(id = "tompokchao.001"))
+        // No fetch has succeeded yet: the guard cannot know ownership.
+        assertEquals(1, RelayUpload.filterUploadable(uploads, "Master", emptyList()).size)
+        assertEquals(1, RelayUpload.filterUploadable(uploads, "", listOf(snapshot(user = "X", id = "a.1"))).size)
+    }
 }

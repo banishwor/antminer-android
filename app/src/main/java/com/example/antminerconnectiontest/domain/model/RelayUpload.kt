@@ -68,6 +68,47 @@ object RelayUpload {
     }
 
     /**
+     * Cross-user upload guard (v0.1.9): with auto-connect, a phone can
+     * end up locally connected to a machine whose sheet row belongs to
+     * ANOTHER relay user (the admin opens the app at someone else's
+     * site; the machine flips LIVE locally). Such a machine is fully
+     * usable on site, but uploading it under THIS user's name would fork
+     * a duplicate sheet row for the same machine — one per visitor.
+     *
+     * A snapshot is uploadable under [relayUser] when the fleet (the
+     * rows the last fetch returned) either has no row for its identity
+     * (a brand-new machine — this user becomes its uploader) or has the
+     * row under [relayUser] itself. Ownership is matched by worker
+     * identity (see [MinerMerge.workerIdentity]), user names compared
+     * trimmed + case-insensitively. When the fleet is unknown (no fetch
+     * has succeeded yet) every snapshot passes — the guard engages from
+     * the first successful fetch on, exactly like duplicate healing.
+     */
+    fun filterUploadable(
+        snapshots: List<RemoteMinerSnapshot>,
+        relayUser: String,
+        fleet: List<RemoteMinerSnapshot>
+    ): List<RemoteMinerSnapshot> {
+        val user = relayUser.trim().lowercase()
+        if (user.isBlank() || fleet.isEmpty()) return snapshots
+        val ownerByIdentity = HashMap<String, String>()
+        for (row in fleet) {
+            val identity = MinerMerge.workerIdentity(row) ?: continue
+            // First row wins for an identity: dedupe order is sheet
+            // order, and any row proves the machine already has an owner.
+            if (identity !in ownerByIdentity) {
+                ownerByIdentity[identity] = row.user.trim().lowercase()
+            }
+        }
+        if (ownerByIdentity.isEmpty()) return snapshots
+        return snapshots.filter { snapshot ->
+            val identity = MinerMerge.normalizeWorkerName(snapshot.id)
+            val owner = ownerByIdentity[identity]
+            owner == null || owner == user
+        }
+    }
+
+    /**
      * Selects the sheet rows a relay for [canonicalIds] (the machine ids
      * this user now writes, as returned by [sheetIdFor]) should ask the
      * endpoint to delete: rows OWNED BY [uploadUser] that provably
