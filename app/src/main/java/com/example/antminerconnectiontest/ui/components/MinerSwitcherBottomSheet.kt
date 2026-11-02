@@ -11,6 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +31,7 @@ import com.example.antminerconnectiontest.theme.*
 fun MinerSwitcherBottomSheet(
     activeProfile: MinerProfile?,
     savedProfiles: List<MinerProfile>,
+    minerHashrates: Map<String, Double> = emptyMap(),
     onSelectProfile: (MinerProfile) -> Unit,
     onAddNewMiner: () -> Unit,
     onDeleteProfile: (String) -> Unit,
@@ -100,6 +105,7 @@ fun MinerSwitcherBottomSheet(
                         ProfileRowItem(
                             profile = profile,
                             isActive = isActive,
+                            hashrateTh = minerHashrates[profile.id],
                             onSelect = {
                                 onSelectProfile(profile)
                                 onDismiss()
@@ -117,9 +123,11 @@ fun MinerSwitcherBottomSheet(
 private fun ProfileRowItem(
     profile: MinerProfile,
     isActive: Boolean,
+    hashrateTh: Double? = null,
     onSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
@@ -156,17 +164,48 @@ private fun ProfileRowItem(
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
+                    // The name the user actually recognises (nickname, else
+                    // worker name) — rows used to show only the model name,
+                    // so two identical models were indistinguishable.
                     Text(
-                        text = profile.displayName.ifBlank { "Antminer" },
+                        text = profile.effectiveName,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
-                    Text(
-                        text = profile.host,
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isActive) AntminerEmerald else TextSecondary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Live status dot when the race poller has a reading:
+                        // green = hashing, red = not answering/0 TH/s.
+                        if (hashrateTh != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (hashrateTh > 0.0) AntminerEmerald else Color(0xFFEF4444))
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                        }
+                        Text(
+                            text = profile.host,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isActive) AntminerEmerald else TextSecondary
+                        )
+                        if (hashrateTh != null && hashrateTh > 0.0) {
+                            Text(
+                                text = " • ${String.format(java.util.Locale.US, "%.1f", hashrateTh)} TH/s",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                    if (profile.nickname.isNotBlank() && profile.workerName.isNotBlank()) {
+                        Text(
+                            text = profile.workerName,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
+                    }
                 }
             }
 
@@ -185,11 +224,36 @@ private fun ProfileRowItem(
                         )
                     }
                 } else {
-                    IconButton(onClick = onDelete) {
+                    IconButton(onClick = { showDeleteConfirmation = true }) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = TextMuted)
                     }
                 }
             }
         }
+    }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete this miner?") },
+            text = {
+                Text("\"${profile.effectiveName}\" (${profile.host}) will be removed from saved miners. This can't be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        onDelete()
+                    }
+                ) {
+                    Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

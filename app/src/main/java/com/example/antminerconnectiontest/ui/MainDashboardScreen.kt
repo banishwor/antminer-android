@@ -218,6 +218,7 @@ fun MainDashboardScreen(
                         MinerSwitcherBottomSheet(
                             activeProfile = activeProfile,
                             savedProfiles = uiState.savedProfiles,
+                            minerHashrates = uiState.minerHashrates,
                             onSelectProfile = { profile ->
                                 viewModel.selectSavedProfile(profile)
                             },
