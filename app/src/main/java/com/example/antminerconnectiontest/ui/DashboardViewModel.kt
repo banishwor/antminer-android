@@ -265,10 +265,14 @@ class DashboardViewModel(
             }
         }
 
-        // Auto-save any profile updates (e.g. newly captured workerName or MAC)
+        // Auto-save any profile updates (e.g. newly captured workerName or MAC).
+        // The repository only fires this for the currently active profile, but
+        // guard here too: an auto-capture must never switch the visible miner.
         repository.onProfileAutoUpdated = { updated ->
             profileManager.saveOrUpdateProfile(updated)
-            _uiState.update { it.copy(activeProfile = updated) }
+            if (_uiState.value.activeProfile?.id == updated.id) {
+                _uiState.update { it.copy(activeProfile = updated) }
+            }
         }
 
         // Restore initial active profile if previously saved

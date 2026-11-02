@@ -11,7 +11,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class MinerRepository(
     private val readApi: MinerReadApi = AntminerReadApiImpl(),
@@ -29,13 +32,44 @@ class MinerRepository(
     private var pollingJob: Job? = null
     var onProfileAutoUpdated: ((MinerProfile) -> Unit)? = null
 
+    // --- Refresh ownership ---------------------------------------------------
+    // Refreshes are serialised through [refreshMutex], and every refresh is
+    // stamped with the [refreshGeneration] that was current when it started.
+    // Switching the active profile bumps the generation and cancels in-flight
+    // refresh jobs, so a slow fetch for the previous miner can never publish
+    // its data (or an auto-captured profile) over the newly selected miner.
+    private val refreshMutex = Mutex()
+
+    @Volatile
+    private var refreshGeneration = 0L
+
+    private val inFlightRefreshJobs: MutableSet<Job> = ConcurrentHashMap.newKeySet()
+
+    private fun cancelInFlightRefreshes() {
+        inFlightRefreshJobs.forEach { it.cancel() }
+    }
+
+    /** True while [generation] still belongs to the currently active profile. */
+    private fun isCurrentGeneration(generation: Long, profileId: String): Boolean {
+        return refreshGeneration == generation && _activeProfile.value?.id == profileId
+    }
+
     fun setActiveProfile(profile: MinerProfile) {
+        val previousId = _activeProfile.value?.id
+        refreshGeneration++
+        cancelInFlightRefreshes()
         _activeProfile.value = profile
-        // Clear previous dashboard data on new profile
-        _dashboardData.value = null
+        if (previousId != profile.id) {
+            // Different miner: drop the previous miner's data. Same-id updates
+            // (rename, IP self-heal, auto-capture) keep the current data on
+            // screen instead of blanking the dashboard until the next poll.
+            _dashboardData.value = null
+        }
     }
 
     fun disconnect() {
+        refreshGeneration++
+        cancelInFlightRefreshes()
         stopPolling()
         _activeProfile.value = null
         _dashboardData.value = null
@@ -50,7 +84,10 @@ class MinerRepository(
         pollingJob = scope.launch {
             while (isActive) {
                 if (_activeProfile.value != null && !_isRefreshing.value) {
-                    refreshDashboardData()
+                    // Child job per tick: cancelling an in-flight refresh on a
+                    // profile switch must not kill the polling loop itself.
+                    val tick = launch { refreshDashboardData() }
+                    tick.join()
                 }
                 delay(15000L) // 15-second refresh interval
             }
@@ -65,13 +102,29 @@ class MinerRepository(
     /**
      * Refreshes all monitoring endpoints concurrently.
      * Preserves last good data if an endpoint temporarily fails.
+     *
+     * Refreshes are serialised and ownership-checked: if the active profile
+     * changes while a fetch is in flight, the stale result is dropped instead
+     * of being published over the newly selected miner.
      */
-    suspend fun refreshDashboardData(): Result<MinerDashboardData> = withContext(Dispatchers.IO) {
+    suspend fun refreshDashboardData(): Result<MinerDashboardData> {
+        val job = currentCoroutineContext()[Job]
+        if (job != null) inFlightRefreshJobs.add(job)
+        try {
+            return refreshMutex.withLock { doRefreshDashboardData() }
+        } finally {
+            if (job != null) inFlightRefreshJobs.remove(job)
+        }
+    }
+
+    private suspend fun doRefreshDashboardData(): Result<MinerDashboardData> = withContext(Dispatchers.IO) {
         val profile = _activeProfile.value
             ?: return@withContext Result.failure(IllegalStateException("No active miner profile"))
+        val generation = refreshGeneration
 
         _isRefreshing.value = true
-        val previousData = _dashboardData.value
+        // Only reuse previous data that belongs to this same miner.
+        val previousData = _dashboardData.value?.takeIf { it.profileId == profile.id }
         val partialErrors = mutableListOf<String>()
 
         try {
@@ -106,6 +159,7 @@ class MinerRepository(
             val pools = if (isAnySuccess) poolsRes.getOrElse { previousData?.pools ?: emptyList() } else emptyList()
 
             val updatedData = MinerDashboardData(
+                profileId = profile.id,
                 systemInfo = if (isAnySuccess) (sysInfo ?: previousData?.systemInfo) else null,
                 summary = summary,
                 stats = stats,
@@ -116,6 +170,15 @@ class MinerRepository(
                 isOnline = isAnySuccess,
                 partialErrors = partialErrors
             )
+
+            if (!isCurrentGeneration(generation, profile.id)) {
+                // The user switched miners while this fetch was in flight.
+                // Drop the result: it must never overwrite the new miner's
+                // screen or resurrect the old active profile.
+                return@withContext Result.failure(
+                    IllegalStateException("Refresh superseded by a miner switch")
+                )
+            }
 
             _dashboardData.value = updatedData
 
@@ -134,12 +197,22 @@ class MinerRepository(
             } else {
                 Result.failure(Exception("Could not connect to miner at ${profile.host}"))
             }
+        } catch (e: CancellationException) {
+            // A profile switch cancels in-flight refreshes on purpose; that is
+            // not a connection failure and must not touch the published state.
+            throw e
         } catch (e: Exception) {
-            _dashboardData.update { current ->
-                current?.copy(
-                    isOnline = false,
-                    partialErrors = listOf(e.message ?: "Unknown connection error")
-                )
+            if (isCurrentGeneration(generation, profile.id)) {
+                _dashboardData.update { current ->
+                    if (current?.profileId == profile.id) {
+                        current.copy(
+                            isOnline = false,
+                            partialErrors = listOf(e.message ?: "Unknown connection error")
+                        )
+                    } else {
+                        current
+                    }
+                }
             }
             Result.failure(e)
         } finally {

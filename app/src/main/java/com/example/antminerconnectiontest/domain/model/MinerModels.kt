@@ -169,6 +169,9 @@ data class MinerChartData(
  * Aggregated dashboard state combining all monitoring endpoints
  */
 data class MinerDashboardData(
+    /** Id of the [MinerProfile] this snapshot was fetched for. Lets every
+     *  consumer verify the data actually belongs to the selected miner. */
+    val profileId: String = "",
     val systemInfo: MinerSystemInfo? = null,
     val summary: MinerSummary? = null,
     val stats: MinerStats? = null,
