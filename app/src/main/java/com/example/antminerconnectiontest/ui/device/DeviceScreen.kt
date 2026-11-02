@@ -84,6 +84,15 @@ fun DeviceScreen(
     onCheckForUpdates: () -> Unit = {},
     onAddNewMiner: () -> Unit,
     onDisconnect: () -> Unit,
+    // Appearance style (v0.3.0): Violet (default) or Liquid Glass,
+    // plus this device's glass capability tier for the helper line.
+    appStyle: AppStyle = AppStyle.VIOLET,
+    glassTier: GlassTier = GlassTier.LITE,
+    onSetAppStyle: (AppStyle) -> Unit = {},
+    // Relay-only mode (v0.3.0): the switch that swaps the whole app
+    // for the relay status screen on a phone left at a miner site.
+    relayOnlyMode: Boolean = false,
+    onSetRelayOnlyMode: (Boolean) -> Unit = {},
     // Selected-machine identity (v0.2.0): when the fleet selection is a
     // machine other than the active local profile (typically a cloud
     // machine), a compact identity block follows the selection here.
@@ -134,7 +143,7 @@ fun DeviceScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Device",
+                    text = "Settings",
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
@@ -420,6 +429,43 @@ fun DeviceScreen(
                 )
             }
         }
+        // Relay only (v0.3.0): its own compact row UNDER the Relay
+        // row, visible WITHOUT expanding the section — one switch +
+        // one helper line. Flipping it swaps the whole app for the
+        // relay status screen; the relay underneath (service,
+        // auto-connect, uploads) does not change at all.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DeviceIconChip(icon = Icons.Default.Upload)
+            Spacer(modifier = Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Relay only",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "This phone shows only the relay status screen. Relay & auto-connect keep running.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = relayOnlyMode,
+                onCheckedChange = onSetRelayOnlyMode
+            )
+        }
+        Text(
+            text = "Finish setup first — relay name and miners — then flip this on and leave the phone at the site.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
         AnimatedVisibility(visible = isCloudExpanded) {
             Column(
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -520,6 +566,55 @@ fun DeviceScreen(
 
         // ── Appearance ───────────────────────────────────────────────
         DeviceSectionLabel("Appearance")
+        // Style (v0.3.0): ONE compact row — label + two-option
+        // selector — per the user's instruction that the style change
+        // must not take much vertical space. The Dark/Light/System
+        // mode picker below stays exactly as it was and applies to
+        // whichever style is selected.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DeviceIconChip(icon = Icons.Default.AutoAwesome)
+            Spacer(modifier = Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Style",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = when (appStyle) {
+                        AppStyle.VIOLET -> "Violet — the solid theme"
+                        AppStyle.LIQUID_GLASS ->
+                            if (glassTier == GlassTier.LITE) {
+                                "Liquid Glass — lighter glass on this phone (no live blur)"
+                            } else {
+                                "Liquid Glass — frosted panels over a wallpaper"
+                            }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ThemeOptionButton(
+                    label = "Violet",
+                    icon = Icons.Default.Palette,
+                    isSelected = appStyle == AppStyle.VIOLET,
+                    onClick = { onSetAppStyle(AppStyle.VIOLET) }
+                )
+                ThemeOptionButton(
+                    label = "Glass",
+                    icon = Icons.Default.BlurOn,
+                    isSelected = appStyle == AppStyle.LIQUID_GLASS,
+                    onClick = { onSetAppStyle(AppStyle.LIQUID_GLASS) }
+                )
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -536,7 +631,7 @@ fun DeviceScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Violet · AMOLED black in Dark",
+                    text = "${if (appStyle == AppStyle.LIQUID_GLASS) "Liquid Glass" else "Violet"} · AMOLED black in Dark",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -1,9 +1,15 @@
 package com.example.antminerconnectiontest.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -32,6 +39,9 @@ import com.example.antminerconnectiontest.ui.hardware.HardwareScreen
 import com.example.antminerconnectiontest.ui.home.HomeScreen
 import com.example.antminerconnectiontest.ui.logs.LogsScreen
 import com.example.antminerconnectiontest.ui.pools.PoolsScreen
+import com.example.antminerconnectiontest.ui.relay.RelayMinerLine
+import com.example.antminerconnectiontest.ui.relay.RelayMinerState
+import com.example.antminerconnectiontest.ui.relay.RelayOnlyScreen
 import com.example.antminerconnectiontest.ui.remote.RemoteHardwareTab
 import com.example.antminerconnectiontest.ui.remote.RemoteLogsTab
 import com.example.antminerconnectiontest.ui.remote.RemotePoolsTab
@@ -137,90 +147,53 @@ fun MainDashboardScreen(
     val identityDetail: MinerDetailUi? =
         if (activeProfile == null || useCloudTabs) selectedRemoteDetail else null
 
-    AntminerConnectionTestTheme(themeMode = uiState.themeMode) {
+    // Liquid Glass capability for THIS device (v0.3.0): the low-end
+    // guard — low-RAM or pre-Android 12 devices get glass-lite (no
+    // live blur) even when the style is selected.
+    val glassTier = rememberGlassTier()
+    val isDarkResolved = when (uiState.themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    val isGlass = uiState.appStyle == AppStyle.LIQUID_GLASS
+
+    AntminerConnectionTestTheme(
+        themeMode = uiState.themeMode,
+        appStyle = uiState.appStyle,
+        glassTier = glassTier
+    ) {
         // Top-level routing (see MainShellRouting): ONE shell for
         // everyone (v0.1.9) — fresh installs, fleet-only viewers and
         // connected users alike. The only other destination is the
         // add-miner setup flow, opened explicitly and exited back here.
-        val route = MainShellRouting.route(isLocalSetupOpen = uiState.isLocalSetupOpen)
+        val route = MainShellRouting.route(uiState.isLocalSetupOpen, uiState.relayOnlyMode)
         when (route) {
             MainRoute.MAIN_SHELL -> {
+            Box(modifier = Modifier.fillMaxSize()) {
+            if (isGlass) {
+                GlassWallpaper(isDark = isDarkResolved, tier = glassTier)
+            }
             Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
+                containerColor = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 8.dp
-                    ) {
-                        NavigationBarItem(
-                            selected = uiState.selectedTab == DashboardTab.HOME,
-                            onClick = { viewModel.selectDashboardTab(DashboardTab.HOME) },
-                            icon = { Icon(Icons.Default.Dashboard, contentDescription = "Home") },
-                            label = { Text("Home") },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (isGlass) {
+                        GlassTabBarCapsule(isDark = isDarkResolved) {
+                            DashboardNavItems(
+                                selectedTab = uiState.selectedTab,
+                                onSelect = viewModel::selectDashboardTab
                             )
-                        )
-
-                        NavigationBarItem(
-                            selected = uiState.selectedTab == DashboardTab.HARDWARE,
-                            onClick = { viewModel.selectDashboardTab(DashboardTab.HARDWARE) },
-                            icon = { Icon(Icons.Default.Memory, contentDescription = "Hardware") },
-                            label = { Text("Hardware") },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    } else {
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 8.dp
+                        ) {
+                            DashboardNavItems(
+                                selectedTab = uiState.selectedTab,
+                                onSelect = viewModel::selectDashboardTab
                             )
-                        )
-
-                        NavigationBarItem(
-                            selected = uiState.selectedTab == DashboardTab.POOLS,
-                            onClick = { viewModel.selectDashboardTab(DashboardTab.POOLS) },
-                            icon = { Icon(Icons.Default.Storage, contentDescription = "Pools") },
-                            label = { Text("Pools") },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-
-                        NavigationBarItem(
-                            selected = uiState.selectedTab == DashboardTab.LOGS,
-                            onClick = { viewModel.selectDashboardTab(DashboardTab.LOGS) },
-                            icon = { Icon(Icons.Default.Terminal, contentDescription = "Logs") },
-                            label = { Text("Logs") },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-
-                        NavigationBarItem(
-                            selected = uiState.selectedTab == DashboardTab.DEVICE,
-                            onClick = { viewModel.selectDashboardTab(DashboardTab.DEVICE) },
-                            icon = { Icon(Icons.Default.Devices, contentDescription = "Device") },
-                            label = { Text("Device") },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
+                        }
                     }
                 }
             ) { paddingValues ->
@@ -357,6 +330,11 @@ fun MainDashboardScreen(
                                 isCloudConnected = uiState.isCloudConnected,
                                 onManualRefresh = viewModel::manualRefresh,
                                 onSetThemeMode = viewModel::setThemeMode,
+                                appStyle = uiState.appStyle,
+                                glassTier = glassTier,
+                                onSetAppStyle = viewModel::setAppStyle,
+                                relayOnlyMode = uiState.relayOnlyMode,
+                                onSetRelayOnlyMode = viewModel::setRelayOnlyMode,
                                 onSelectProfile = viewModel::selectSavedProfile,
                                 onDeleteProfile = viewModel::deleteSavedProfile,
                                 onUpdateNicknameAndLocation = viewModel::updateMinerNicknameAndLocation,
@@ -413,6 +391,47 @@ fun MainDashboardScreen(
                     }
                 }
             }
+            } // wallpaper Box
+            }
+            // Relay-only (v0.3.0): the whole app is this one status
+            // screen — no nav, no tabs. The relay underneath runs
+            // unchanged; exiting is the screen's one button.
+            MainRoute.RELAY_ONLY -> {
+                val relayOn = uiState.cloudConfig.isSyncEnabled
+                val relayMinerLines = uiState.savedProfiles.map { profile ->
+                    val worker = profile.workerName.trim()
+                    val rate = uiState.minerHashrates[profile.id] ?: 0.0
+                    val activeOnline = activeProfile?.id == profile.id &&
+                        uiState.dashboardData?.isOnline == true
+                    val state = when {
+                        !relayOn -> RelayMinerState.OFFLINE
+                        worker.isBlank() -> RelayMinerState.WAITING
+                        activeOnline || rate > 0.0 -> RelayMinerState.UPLOADING
+                        else -> RelayMinerState.OFFLINE
+                    }
+                    RelayMinerLine(
+                        name = worker.ifBlank { profile.displayName },
+                        detail = profile.host + when {
+                            !relayOn -> " · relay off"
+                            state == RelayMinerState.UPLOADING -> " · connected"
+                            state == RelayMinerState.WAITING -> " · worker name unknown — upload deferred"
+                            else -> " · not reachable"
+                        },
+                        state = state
+                    )
+                }
+                RelayOnlyScreen(
+                    userName = uiState.cloudConfig.userName,
+                    relayEnabled = relayOn,
+                    cloudConfigured = uiState.cloudConfig.userName.isNotBlank() &&
+                        uiState.cloudConfig.webhookUrl.isNotBlank(),
+                    miners = relayMinerLines,
+                    lastUploadAtMs = uiState.lastRelayUploadAtMs,
+                    lastError = uiState.relayLastError,
+                    appVersion = viewModel.installedVersionName() ?: "?",
+                    onRefreshStatus = viewModel::refreshRelayStatus,
+                    onExit = { viewModel.setRelayOnlyMode(false) }
+                )
             }
             // Add-miner setup: scan/manual add flow, reached only by an
             // explicit tap (Add Miner / Add Unit / a needs-password
@@ -448,7 +467,11 @@ fun MainDashboardScreen(
         // in the browser for download + install-over; "Later" dismisses
         // this version for the rest of the session.
         val pendingUpdate = uiState.availableUpdate
-        if (pendingUpdate != null && uiState.updatePromptDismissedTag != pendingUpdate.tag) {
+        // Never in relay-only mode: a site phone is never interrupted
+        // by update UI (the cold-start check is skipped there too).
+        if (route != MainRoute.RELAY_ONLY && pendingUpdate != null &&
+            uiState.updatePromptDismissedTag != pendingUpdate.tag
+        ) {
             val context = androidx.compose.ui.platform.LocalContext.current
             AlertDialog(
                 onDismissRequest = { viewModel.dismissUpdatePrompt() },
@@ -483,6 +506,98 @@ fun MainDashboardScreen(
                     }
                 }
             )
+        }
+    }
+}
+
+/**
+ * The five bottom-navigation items, shared by the solid [NavigationBar]
+ * (Violet style) and the floating glass capsule (Liquid Glass style) —
+ * same destinations, same selection colours, only the container
+ * material differs.
+ */
+@Composable
+private fun RowScope.DashboardNavItems(
+    selectedTab: DashboardTab,
+    onSelect: (DashboardTab) -> Unit
+) {
+    @Composable
+    fun itemColors() = NavigationBarItemDefaults.colors(
+        selectedIconColor = MaterialTheme.colorScheme.primary,
+        selectedTextColor = MaterialTheme.colorScheme.primary,
+        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    NavigationBarItem(
+        selected = selectedTab == DashboardTab.HOME,
+        onClick = { onSelect(DashboardTab.HOME) },
+        icon = { Icon(Icons.Default.Dashboard, contentDescription = "Home") },
+        label = { Text("Home") },
+        colors = itemColors()
+    )
+    NavigationBarItem(
+        selected = selectedTab == DashboardTab.HARDWARE,
+        onClick = { onSelect(DashboardTab.HARDWARE) },
+        icon = { Icon(Icons.Default.Memory, contentDescription = "Hardware") },
+        label = { Text("Hardware") },
+        colors = itemColors()
+    )
+    NavigationBarItem(
+        selected = selectedTab == DashboardTab.POOLS,
+        onClick = { onSelect(DashboardTab.POOLS) },
+        icon = { Icon(Icons.Default.Storage, contentDescription = "Pools") },
+        label = { Text("Pools") },
+        colors = itemColors()
+    )
+    NavigationBarItem(
+        selected = selectedTab == DashboardTab.LOGS,
+        onClick = { onSelect(DashboardTab.LOGS) },
+        icon = { Icon(Icons.Default.Terminal, contentDescription = "Logs") },
+        label = { Text("Logs") },
+        colors = itemColors()
+    )
+    NavigationBarItem(
+        selected = selectedTab == DashboardTab.DEVICE,
+        onClick = { onSelect(DashboardTab.DEVICE) },
+        icon = { Icon(Icons.Default.Devices, contentDescription = "Settings") },
+        label = { Text("Settings") },
+        colors = itemColors()
+    )
+}
+
+/**
+ * The Liquid Glass tab bar (v0.3.0, round-5 mockup): a floating
+ * capsule — translucent fill, bright specular edge, soft shadow —
+ * hovering over the wallpaper instead of a full-width bar. On FULL
+ * tier devices a blurred copy of the wallpaper sits inside it (the
+ * panel frosting what's behind it); on glass-lite the translucent
+ * fill + edge alone carry the look, with no live blur anywhere.
+ */
+@Composable
+private fun GlassTabBarCapsule(
+    isDark: Boolean,
+    content: @Composable RowScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, glassEdgeBrush(isDark)),
+            shadowElevation = 12.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box {
+                GlassBackdrop()
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    content = content
+                )
+            }
         }
     }
 }
