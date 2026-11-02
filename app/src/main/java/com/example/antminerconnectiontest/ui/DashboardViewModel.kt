@@ -986,7 +986,8 @@ class DashboardViewModel(
                 val newIp = networkScanner.findMinerByWorkerName(
                     workerName = active.workerName,
                     username = active.username,
-                    password = active.password
+                    password = active.password,
+                    context = getApplication()
                 )
                 if (newIp != null && newIp != active.host) {
                     val healed = profileManager.updateProfileHostByWorkerName(active.workerName, newIp)

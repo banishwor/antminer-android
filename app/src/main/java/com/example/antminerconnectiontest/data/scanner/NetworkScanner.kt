@@ -1,5 +1,8 @@
 package com.example.antminerconnectiontest.data.scanner
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.example.antminerconnectiontest.data.AntminerClient
 import com.example.antminerconnectiontest.data.ConnectionResult
 import com.example.antminerconnectiontest.data.parser.AntminerJsonParsers
@@ -17,6 +20,8 @@ import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 enum class DiscoveryStatus {
     CONFIRMED_ANTMINER,
@@ -202,16 +207,58 @@ class NetworkScanner(
     private val detector: AntminerDetector = AntminerDetector()
 ) {
     /**
-     * Determines local candidate IP range from active network interfaces.
-     * Does not assume 192.168.1.x.
+     * Determines local candidate IP range, preferring the active Wi-Fi
+     * network's own address (via ConnectivityManager LinkProperties).
+     *
+     * Deriving the subnet from "the first network interface" could pick a
+     * cellular or VPN interface and scan a carrier/tunnel /24 instead of
+     * the LAN the miners are on.
+     */
+    fun getLocalSubnetIps(context: Context): List<String> {
+        return wifiSubnetIps(context) ?: getLocalSubnetIps()
+    }
+
+    private fun wifiSubnetIps(context: Context): List<String>? {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return null
+            val wifiNetwork = cm.allNetworks.firstOrNull { network ->
+                cm.getNetworkCapabilities(network)
+                    ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            } ?: return null
+            val linkProperties = cm.getLinkProperties(wifiNetwork) ?: return null
+            val ipv4 = linkProperties.linkAddresses
+                .map { it.address }
+                .filterIsInstance<Inet4Address>()
+                .firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+                ?: return null
+            subnetIpsForHost(ipv4.hostAddress)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun subnetIpsForHost(hostAddress: String?): List<String>? {
+        val parts = hostAddress?.split(".") ?: return null
+        if (parts.size != 4) return null
+        val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
+        return (1..254).map { "$prefix.$it" }
+    }
+
+    /**
+     * Fallback: derive the candidate range from network interfaces when no
+     * Wi-Fi link properties are available. Skips interfaces that are clearly
+     * not the LAN (VPN tunnels, cellular data). Does not assume 192.168.1.x.
      */
     fun getLocalSubnetIps(): List<String> {
         val ipList = mutableListOf<String>()
+        val nonLanPrefixes = listOf("tun", "ppp", "rmnet", "ccmni", "ipsec", "v4-")
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
                 val iface = interfaces.nextElement()
                 if (iface.isLoopback || !iface.isUp) continue
+                if (nonLanPrefixes.any { iface.name.startsWith(it) }) continue
 
                 val addresses = iface.inetAddresses
                 while (addresses.hasMoreElements()) {
@@ -246,19 +293,29 @@ class NetworkScanner(
      * Scans the subnet with bounded concurrency (16 workers) and emits progress updates.
      */
     fun scanSubnet(
-        candidateIps: List<String> = getLocalSubnetIps()
+        context: Context? = null,
+        candidateIps: List<String> = if (context != null) getLocalSubnetIps(context) else getLocalSubnetIps()
     ): Flow<ScanProgress> = flow {
         val total = candidateIps.size
         val discovered = mutableListOf<DiscoveredMiner>()
         val semaphore = Semaphore(16) // Max 16 concurrent probes
         val progressMutex = Mutex()
-        var completed = 0
+        // Workers mutate progress from 16 concurrent coroutines; the emit
+        // loop reads it from another. completed/discovered used to be a
+        // plain var/list read outside the lock (data race, possible
+        // ConcurrentModificationException). completed is now atomic, the
+        // discovered snapshot is taken under the same mutex that guards
+        // writes, and the "active IP" shown is the address actually being
+        // probed rather than candidateIps[completed].
+        val completed = AtomicInteger(0)
+        val currentProbingIp = AtomicReference("")
 
         coroutineScope {
             val jobs = mutableListOf<Job>()
             for (ip in candidateIps) {
                 val job = launch(Dispatchers.IO) {
                     semaphore.withPermit {
+                        currentProbingIp.set(ip)
                         val startTime = System.currentTimeMillis()
                         val isReachable = probe.isHttpReachable(ip)
                         val duration = System.currentTimeMillis() - startTime
@@ -278,23 +335,22 @@ class NetworkScanner(
                             }
                         }
 
-                        progressMutex.withLock {
-                            completed++
-                        }
+                        completed.incrementAndGet()
                     }
                 }
                 jobs.add(job)
             }
 
             // Monitor and emit progress while workers execute
-            while (completed < total) {
+            while (completed.get() < total) {
+                val snapshot = progressMutex.withLock { discovered.toList() }
                 emit(
                     ScanProgress(
-                        scannedCount = completed,
+                        scannedCount = completed.get(),
                         totalCount = total,
-                        activeIp = candidateIps.getOrNull(completed) ?: "",
+                        activeIp = currentProbingIp.get(),
                         isScanning = true,
-                        discoveredMiners = discovered.toList()
+                        discoveredMiners = snapshot
                     )
                 )
                 delay(120)
@@ -304,13 +360,14 @@ class NetworkScanner(
         }
 
         // Final completion emission
+        val finalSnapshot = progressMutex.withLock { discovered.toList() }
         emit(
             ScanProgress(
                 scannedCount = total,
                 totalCount = total,
                 activeIp = "Complete",
                 isScanning = false,
-                discoveredMiners = discovered.toList()
+                discoveredMiners = finalSnapshot
             )
         )
     }
@@ -323,7 +380,8 @@ class NetworkScanner(
         workerName: String,
         username: String = "root",
         password: String = "root",
-        candidateIps: List<String> = getLocalSubnetIps()
+        context: Context? = null,
+        candidateIps: List<String> = if (context != null) getLocalSubnetIps(context) else getLocalSubnetIps()
     ): String? = withContext(Dispatchers.IO) {
         if (workerName.isBlank()) return@withContext null
         val targetWorker = workerName.trim().lowercase()
