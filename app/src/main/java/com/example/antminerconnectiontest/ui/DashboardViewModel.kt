@@ -234,6 +234,8 @@ class DashboardViewModel(
 
     private var scanJob: Job? = null
     private var cloudSyncJob: Job? = null
+    /** Sheet row ids already sent a legacy-duplicate delete request for this session. */
+    private val legacyHealAttemptedIds = mutableSetOf<String>()
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
     private var wifiRefreshCallback: android.net.ConnectivityManager.NetworkCallback? = null
 
@@ -528,7 +530,16 @@ class DashboardViewModel(
                     rate5s
                 }
 
-                if (rate5s > 0.0 || avgRate > 0.0) {
+                // The sheet row's id is the MACHINE's identity: its worker
+                // name (pool username), the same on every device and
+                // install. A profile that does not know its worker name
+                // yet is DEFERRED — never uploaded under this phone's
+                // per-device profile UUID, which used to fork one machine
+                // into two sheet rows (see RelayUpload). The name is
+                // backfilled from the miner's pool config the first time
+                // the machine is opened, so deferral is temporary.
+                val sheetId = RelayUpload.sheetIdFor(profile)
+                if ((rate5s > 0.0 || avgRate > 0.0) && sheetId != null) {
                     // Only upload telemetry that was actually measured. For
                     // non-active miners we only know the hashrate (race
                     // poller), so temp/fan are unknown: report 0, which
@@ -538,12 +549,7 @@ class DashboardViewModel(
                     val maxFan = if (isActive && isLocalOnline) currentData?.stats?.maxFanRpm ?: 0 else 0
                     RemoteMinerSnapshot(
                         user = cfg.userName.trim(),
-                        // The sheet row's id is the MACHINE's identity, not
-                        // this phone's: the worker name (pool username) is
-                        // the same on every device and install, while the
-                        // profile UUID is per-device — remote viewers match
-                        // rows to local profiles by it (see MinerMerge).
-                        id = profile.workerName.ifBlank { profile.id },
+                        id = sheetId,
                         nickname = profile.effectiveName,
                         ip = profile.host,
                         hashrate5s = rate5s,
@@ -577,6 +583,24 @@ class DashboardViewModel(
         }.onFailure { err ->
             _uiState.update {
                 it.copy(isCloudConnected = false)
+            }
+        }
+
+        // 3. Heal legacy duplicates, best-effort: rows this user's
+        //    machines accumulated under per-device UUID ids before
+        //    uploads carried the worker identity. Selection is limited
+        //    to this user's own rows (see RelayUpload), each id is
+        //    requested at most once per session, and endpoint versions
+        //    without delete support simply ignore the request.
+        val fetched = fetchRes.getOrNull()
+        if (fetched != null) {
+            val canonicalIds = profileManager.savedProfiles.value
+                .mapNotNull { RelayUpload.sheetIdFor(it) }
+            val duplicateIds = RelayUpload.legacyDuplicateIds(fetched.miners, cfg.userName, canonicalIds)
+                .filter { it !in legacyHealAttemptedIds }
+            if (duplicateIds.isNotEmpty()) {
+                legacyHealAttemptedIds += duplicateIds
+                cloudSyncManager.deleteRemoteRows(cfg.webhookUrl, cfg.userName, duplicateIds)
             }
         }
     }
