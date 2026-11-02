@@ -37,6 +37,32 @@ data class FleetRow(
  * online ones, most recently updated first. All functions are pure and
  * take `nowMs` explicitly so the rules are unit-testable.
  */
+/** Where a fleet row's numbers come from — shown ONLY by this chip. */
+enum class FleetSourceChip { LIVE, REMOTE }
+
+/**
+ * Everything a Home fleet row is allowed to show (v0.2.0 strict strip):
+ * status, nickname / worker, the LIVE-REMOTE chip, the hashrate (or
+ * "Offline") and, for offline machines, when the cloud last heard from
+ * them. No temperatures, no fan speeds, no pool names, no shares — that
+ * detail lives on the tabs. Row surface colour is the same for cloud
+ * and local machines; the chip is the only source signal.
+ */
+data class FleetRowUi(
+    val displayName: String,
+    /** Worker name for the small second line; "" when it adds nothing. */
+    val workerLine: String,
+    val chip: FleetSourceChip,
+    val isOnline: Boolean,
+    /** "%.1f TH/s" while online, "Offline" otherwise. */
+    val hashrateLabel: String,
+    /**
+     * Offline rows: the full "Last updated 2h ago · 14:32" line.
+     * Online cloud rows: "Updated 2 min ago". Live rows: "".
+     */
+    val freshnessLine: String
+)
+
 object FleetSorting {
 
     /** A remote snapshot counts as live for 2 minutes, matching [RemoteMinerSnapshot.isStale]. */
@@ -135,6 +161,37 @@ object FleetSorting {
             lastUpdatedEpochMs = lastUpdatedEpochMs(entry),
             workerName = workerNameOf(entry),
             poolBrand = poolBrand
+        )
+    }
+
+    /**
+     * The Home fleet-row projection (see [FleetRowUi]). The chip is
+     * REMOTE only while the row is actually showing cloud data — a
+     * merged machine with a live reading is LIVE, even though a
+     * snapshot also exists for it.
+     */
+    fun rowUi(row: FleetRow, nowMs: Long): FleetRowUi {
+        val entry = row.entry
+        val isRemoteData = entry.remoteSnapshot != null &&
+            entry.localHashrateTh == null && !entry.hasLiveLocalData
+        return FleetRowUi(
+            displayName = row.displayName,
+            workerLine = row.workerName.takeIf {
+                it.isNotBlank() && !MinerMerge.isDeviceId(it) &&
+                    !it.equals(row.displayName, ignoreCase = true)
+            } ?: "",
+            chip = if (isRemoteData) FleetSourceChip.REMOTE else FleetSourceChip.LIVE,
+            isOnline = row.isOnline,
+            hashrateLabel = if (row.isOnline) {
+                String.format(Locale.US, "%.1f TH/s", row.hashrateTh)
+            } else {
+                "Offline"
+            },
+            freshnessLine = when {
+                !row.isOnline -> formatLastUpdated(row.lastUpdatedEpochMs, nowMs)
+                isRemoteData -> formatUpdatedShort(row.lastUpdatedEpochMs, nowMs)
+                else -> ""
+            }
         )
     }
 

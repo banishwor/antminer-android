@@ -1,58 +1,46 @@
 package com.example.antminerconnectiontest.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Air
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerHealthFlags
+import com.example.antminerconnectiontest.domain.model.MinerMerge
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteChainSnapshot
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.domain.model.TelemetryCodec
 import com.example.antminerconnectiontest.domain.model.toRemoteChain
 import com.example.antminerconnectiontest.theme.AntminerEmerald
-import com.example.antminerconnectiontest.theme.CyberCyan
-import com.example.antminerconnectiontest.theme.ElectricBlue
 import com.example.antminerconnectiontest.theme.LocalDataFontFamily
 import com.example.antminerconnectiontest.theme.WarningAmber
 import java.util.Locale
 
 /**
- * THE miner detail presentation (v0.1.7) — one machine, one layout,
- * whether the data arrived live from the miner on the local network or
- * from a cloud relay snapshot. Both sources are first normalised into
- * [MinerDetailUi]; [MinerDetailContent] then renders the same sections
- * in the same order with the same components:
+ * THE miner detail presentation — one machine, one layout, whether the
+ * data arrived live from the miner on the local network or from a cloud
+ * relay snapshot. Both sources are first normalised into [MinerDetailUi];
+ * the tab screens then render the same sections in the same order with
+ * the same components (detail parity, v0.1.7+).
  *
- * header → hero hashrate → metric cards → session metrics → hash boards
- * → fans → primary pool → health → (remote only: on-location sections).
+ * v0.2.0 split the old single detail body by tab, per the approved
+ * mockups: hash boards / fans / temps / session / health live on the
+ * Hardware tab ([MinerHardwareSections]), the primary pool on the Pools
+ * tab ([MinerDetailPoolSection]), logs on the Logs tab. Home shows only
+ * the summary projection (HeroSummary) — none of these sections.
  *
  * The only honest differences between LIVE and REMOTE are the source
  * chip, the "last updated" line, and sections a snapshot genuinely
@@ -62,6 +50,12 @@ import java.util.Locale
  */
 data class MinerDetailUi(
     val displayName: String,
+    /** Pool worker name (e.g. "banishwor.001"), "" when unknown. */
+    val workerName: String = "",
+    /** Miner model (e.g. "Antminer S19k Pro"), "" when unknown. */
+    val modelName: String = "",
+    /** Firmware / system version, "" when unknown. */
+    val firmware: String = "",
     /** Model • firmware line, blank when neither is known. */
     val modelLine: String,
     /** "ip • Owner: X" for a snapshot, "host • location" for local — one plain subtitle style for both (v0.1.9). */
@@ -102,6 +96,9 @@ fun RemoteMinerSnapshot.toMinerDetailUi(displayName: String): MinerDetailUi {
     val fanMax = fanRpms.maxOrNull() ?: maxFan.takeIf { it > 0 }
     return MinerDetailUi(
         displayName = displayName,
+        workerName = MinerMerge.workerIdentity(this) ?: "",
+        modelName = model,
+        firmware = firmware,
         modelLine = listOf(model, firmware).filter { it.isNotBlank() }.joinToString(" • "),
         subLine = "$ip • Owner: $user",
         isRemote = true,
@@ -158,6 +155,9 @@ fun localMinerDetailUi(
     }
     return MinerDetailUi(
         displayName = displayName,
+        workerName = profile.workerName,
+        modelName = data?.systemInfo?.minerType?.takeIf { it.isNotBlank() } ?: profile.cachedModel ?: "",
+        firmware = data?.systemInfo?.systemVersion ?: "",
         modelLine = listOfNotNull(
             data?.systemInfo?.minerType?.takeIf { it.isNotBlank() } ?: profile.cachedModel,
             data?.systemInfo?.systemVersion?.takeIf { it.isNotBlank() }
@@ -195,148 +195,202 @@ fun localMinerDetailUi(
 }
 
 /**
- * The unified detail body. [showHeader] is false when the host screen
- * already renders its own header bar for the same machine (Home's local
- * dashboard chrome) — every section below the header is identical
- * either way.
+ * The LIVE / REMOTE source chip — the ONLY place data source is shown
+ * (v0.2.0). Same neutral styling for both; colour never encodes source.
  */
 @Composable
-fun MinerDetailContent(
-    detail: MinerDetailUi,
-    modifier: Modifier = Modifier,
-    showHeader: Boolean = true,
-    onBack: (() -> Unit)? = null,
-    onEditNickname: (() -> Unit)? = null
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+fun SourceChip(isRemote: Boolean) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(6.dp)
     ) {
-        if (showHeader) {
-            MinerDetailHeader(detail = detail, onBack = onBack, onEditNickname = onEditNickname)
-        }
-
-        HeroHashrateCard(
-            hashrate = detail.hashrateTh,
-            avgRate = detail.avgHashrateTh,
-            idealRate = detail.idealHashrateTh ?: 120.0,
-            isOnline = detail.isOnline,
-            // One hero for LIVE and REMOTE alike (v0.1.9): the source is
-            // told by the header's REMOTE chip + "last updated" line,
-            // not by a separate cyan cloud theme.
-            isCloudMode = false,
-            isStaleCloud = detail.isStale
+        Text(
+            text = if (isRemote) "REMOTE" else "LIVE",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
+    }
+}
 
-        // Quick metrics — the same 2×2 grid the local dashboard uses.
+/** Small status dot: green online, red offline/stale. Status colour only. */
+@Composable
+fun StatusDot(isOnline: Boolean, isStale: Boolean = false, size: Int = 9) {
+    Box(
+        modifier = Modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(
+                if (isOnline && !isStale) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.error
+            )
+    )
+}
+
+/**
+ * The context header every Hardware / Pools / Logs tab opens with
+ * (v0.2.0): which machine this tab is about — nickname big, worker
+ * small, the source chip, and the cloud "last updated" line.
+ */
+@Composable
+fun SelectedMachineHeader(
+    detail: MinerDetailUi,
+    isRefreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
+    onEditNickname: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = modifier.fillMaxWidth()
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            MetricCard(
-                title = "Chip Temp Max",
-                value = detail.chipTempC?.let { "$it°C" } ?: "--°C",
-                icon = Icons.Default.Thermostat,
-                modifier = Modifier.weight(1f),
-                accentColor = if ((detail.chipTempC ?: 0) > 70) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
-            MetricCard(
-                title = "Max Fan RPM",
-                value = detail.maxFanRpm?.let { "$it RPM" } ?: "-- RPM",
-                icon = Icons.Default.Air,
-                modifier = Modifier.weight(1f),
-                accentColor = CyberCyan
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MetricCard(
-                title = "HW Errors",
-                value = detail.hwErrors?.toString() ?: "--",
-                icon = Icons.Default.BugReport,
-                modifier = Modifier.weight(1f),
-                accentColor = if ((detail.hwErrors ?: 0L) > 100L) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            MetricCard(
-                title = "Status",
-                value = if (detail.isRemote) detail.statusText else (detail.uptimeLabel ?: detail.statusText),
-                icon = Icons.Default.Schedule,
-                modifier = Modifier.weight(1f),
-                accentColor = ElectricBlue
-            )
-        }
-
-        // Session metrics the hero doesn't carry.
-        Card(
-            shape = RoundedCornerShape(10.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = CardDefaults.outlinedCardBorder().copy(
-                brush = SolidColor(MaterialTheme.colorScheme.outline)
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                DetailMetric("30m Avg", detail.rate30mTh?.let { String.format(Locale.US, "%.1f TH/s", it) } ?: "--")
-                DetailMetric("Uptime", detail.uptimeLabel ?: "--")
-                DetailMetric("PCB Temp", detail.pcbTempC?.let { "$it°C" } ?: "--")
+            StatusDot(isOnline = detail.isOnline, isStale = detail.isStale)
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = detail.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (onEditNickname != null) {
+                        IconButton(
+                            onClick = onEditNickname,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Set nickname on this phone",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+                }
+                val workerLine = detail.workerName.takeIf {
+                    it.isNotBlank() && !it.equals(detail.displayName, ignoreCase = true)
+                }
+                val secondLine = listOfNotNull(
+                    workerLine,
+                    detail.modelName.takeIf { it.isNotBlank() }
+                ).joinToString(" • ")
+                if (secondLine.isNotBlank()) {
+                    Text(
+                        text = secondLine,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (detail.isRemote) {
+                    detail.lastUpdatedLabel?.let { label ->
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (detail.isStale) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
-        }
-
-        MinerDetailChainsSection(detail)
-
-        MinerDetailFansSection(detail)
-
-        MinerDetailPoolSection(detail)
-
-        // Health flags
-        SectionTitle("Health")
-        val health = detail.health
-        if (health == null) {
-            UnavailableSection("Health", "The miner's self-reported health flags are not in this data.")
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                HealthChip("Hashrate", health.rateOk)
-                HealthChip("Network", health.networkOk)
-                HealthChip("Fans", health.fansOk)
-                HealthChip("Temp", health.tempOk)
-            }
-        }
-
-        // Sections a relay snapshot can never carry stay visible as
-        // placeholders, so a remote detail has the same shape as a local
-        // one instead of silently ending early.
-        if (detail.showOnLocationSections) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                UnavailableSection("Logs", "Miner event and kernel logs")
-                Text(
-                    text = "Available on location only — connect on the miner's Wi-Fi to view.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            detail.lastUpdatedLabel?.let { label ->
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (detail.isStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            SourceChip(isRemote = detail.isRemote)
+            if (onRefresh != null) {
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 /**
- * Hash boards section of the unified detail, extracted so the shell's
- * Hardware tab (remote mode, v0.1.8) renders the exact same section
- * instead of a parallel implementation.
+ * The Hardware tab body for the selected machine (v0.2.0): temperatures,
+ * session metrics, hash boards, fans, health — identical for live data
+ * and cloud snapshots.
+ */
+@Composable
+fun MinerHardwareSections(detail: MinerDetailUi) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        MinerDetailTempsSection(detail)
+        MinerDetailSessionSection(detail)
+        MinerDetailChainsSection(detail)
+        MinerDetailFansSection(detail)
+        MinerDetailHealthSection(detail)
+    }
+}
+
+/** Temperatures + fastest fan — Hardware tab only (strict strip). */
+@Composable
+fun MinerDetailTempsSection(detail: MinerDetailUi) {
+    SectionTitle("Temperatures")
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            DetailMetric("Chip Temp", detail.chipTempC?.let { "$it°C" } ?: "--")
+            DetailMetric("PCB Temp", detail.pcbTempC?.let { "$it°C" } ?: "--")
+            DetailMetric("Max Fan", detail.maxFanRpm?.let { String.format(Locale.US, "%,d RPM", it) } ?: "--")
+        }
+    }
+}
+
+/** Session metrics — 30m average, uptime, HW errors, firmware. Hardware tab only. */
+@Composable
+fun MinerDetailSessionSection(detail: MinerDetailUi) {
+    SectionTitle("Session")
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            DetailMetric("30m Avg", detail.rate30mTh?.let { String.format(Locale.US, "%.1f TH/s", it) } ?: "--")
+            DetailMetric("Uptime", detail.uptimeLabel ?: "--")
+            DetailMetric("HW Errors", detail.hwErrors?.toString() ?: "--")
+            DetailMetric("Firmware", detail.firmware.ifBlank { "--" })
+        }
+    }
+}
+
+/**
+ * Hash boards section of the unified detail, shared by the Hardware tab
+ * for live and cloud machines alike.
  */
 @Composable
 fun MinerDetailChainsSection(detail: MinerDetailUi) {
@@ -355,56 +409,67 @@ fun MinerDetailFansSection(detail: MinerDetailUi) {
     if (detail.fanRpms.isEmpty()) {
         UnavailableSection("Fan list", "Per-fan speeds are not in this data.")
     } else {
-        if (detail.slowFanCount > 0) {
-            Surface(
-                color = WarningAmber.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = WarningAmber,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Low Fan Speed Warning: ${detail.slowFanCount} fan(s) spinning below ${TelemetryCodec.SLOW_FAN_RPM} RPM.",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                if (detail.slowFanCount > 0) {
+                    Surface(
+                        color = WarningAmber.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = WarningAmber,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Low Fan Speed Warning: ${detail.slowFanCount} fan(s) spinning below ${TelemetryCodec.SLOW_FAN_RPM} RPM.",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        detail.fanRpms.forEachIndexed { index, rpm ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Fan ${index + 1}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = String.format(Locale.US, "%,d RPM", rpm),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = LocalDataFontFamily.current,
-                    color = if (rpm < TelemetryCodec.SLOW_FAN_RPM) WarningAmber else MaterialTheme.colorScheme.onSurface
-                )
+                detail.fanRpms.forEachIndexed { index, rpm ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Fan ${index + 1}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%,d RPM", rpm),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = LocalDataFontFamily.current,
+                            color = if (rpm < TelemetryCodec.SLOW_FAN_RPM) WarningAmber else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/** Primary pool section of the unified detail — see [MinerDetailChainsSection]. */
+/** Primary pool section of the unified detail — the Pools tab body for a cloud machine. */
 @Composable
 fun MinerDetailPoolSection(detail: MinerDetailUi) {
     SectionTitle("Primary Pool")
@@ -412,19 +477,19 @@ fun MinerDetailPoolSection(detail: MinerDetailUi) {
         UnavailableSection("Primary pool", "Pool endpoint and share counts are not in this data.")
     } else {
         Card(
-            shape = RoundedCornerShape(10.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (detail.poolUrl.isNotBlank()) {
                     Text(
                         text = detail.poolUrl,
                         fontFamily = LocalDataFontFamily.current,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -443,112 +508,19 @@ fun MinerDetailPoolSection(detail: MinerDetailUi) {
     }
 }
 
+/** Health flags section of the unified detail. */
 @Composable
-fun MinerDetailHeader(
-    detail: MinerDetailUi,
-    onBack: (() -> Unit)? = null,
-    onEditNickname: (() -> Unit)? = null
-) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(
-                if (detail.isStale) MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                else MaterialTheme.colorScheme.outline
-            )
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (detail.isStale) MaterialTheme.colorScheme.error
-                            else if (detail.isOnline) AntminerEmerald
-                            else MaterialTheme.colorScheme.error
-                        )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = detail.displayName,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Surface(
-                            // The REMOTE chip is the one allowed source
-                            // marker (v0.1.9): neutral styling, same
-                            // shape as LIVE — no separate cloud theme.
-                            color = if (detail.isRemote) MaterialTheme.colorScheme.surfaceVariant else AntminerEmerald.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = if (detail.isRemote) "REMOTE" else "LIVE",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (detail.isRemote) MaterialTheme.colorScheme.onSurfaceVariant else AntminerEmerald,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                        if (onEditNickname != null) {
-                            IconButton(
-                                onClick = onEditNickname,
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "Set nickname on this phone",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = detail.subLine,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = LocalDataFontFamily.current,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    if (detail.modelLine.isNotBlank()) {
-                        Text(
-                            text = detail.modelLine,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (detail.isRemote) {
-                        detail.lastUpdatedLabel?.let { label ->
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (detail.isStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-            if (onBack != null) {
-                TextButton(onClick = onBack) {
-                    Text("← All miners", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+fun MinerDetailHealthSection(detail: MinerDetailUi) {
+    SectionTitle("Health")
+    val health = detail.health
+    if (health == null) {
+        UnavailableSection("Health", "The miner's self-reported health flags are not in this data.")
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            HealthChip("Hashrate", health.rateOk)
+            HealthChip("Network", health.networkOk)
+            HealthChip("Fans", health.fansOk)
+            HealthChip("Temp", health.tempOk)
         }
     }
 }
@@ -562,12 +534,12 @@ fun MinerDetailHeader(
 @Composable
 fun MinerChainCard(chain: RemoteChainSnapshot) {
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -591,7 +563,7 @@ fun MinerChainCard(chain: RemoteChainSnapshot) {
                     text = String.format(Locale.US, "%.2f TH/s", chain.realHashrateTh),
                     fontWeight = FontWeight.Bold,
                     fontFamily = LocalDataFontFamily.current,
-                    fontSize = 16.sp,
+                    fontSize = MaterialTheme.typography.titleMedium.fontSize,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
@@ -640,7 +612,7 @@ fun MinerChainCard(chain: RemoteChainSnapshot) {
 fun SectionTitle(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface
     )
@@ -656,7 +628,7 @@ fun DetailMetric(label: String, value: String) {
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             fontFamily = LocalDataFontFamily.current,
             color = MaterialTheme.colorScheme.onSurface
@@ -703,182 +675,5 @@ fun UnavailableSection(title: String, description: String) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
-    }
-}
-
-/**
- * The hero hashrate card — shared by the local dashboard (Home) and the
- * unified detail, so a machine's headline rate looks identical wherever
- * it is opened. (Moved here from HomeScreen in v0.1.7.)
- */
-@Composable
-fun HeroHashrateCard(
-    hashrate: Double,
-    avgRate: Double,
-    idealRate: Double,
-    isOnline: Boolean,
-    isCloudMode: Boolean,
-    isStaleCloud: Boolean,
-    modifier: Modifier = Modifier
-) {
-    // Isolated animation scope - prevents the parent from recomposing on every frame!
-    val infiniteTransition = rememberInfiniteTransition(label = "HeroGlow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(
-                if (isStaleCloud) MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                else if (isCloudMode) CyberCyan.copy(alpha = glowAlpha)
-                else if (isOnline) AntminerEmerald.copy(alpha = glowAlpha)
-                else MaterialTheme.colorScheme.outline
-            )
-        ),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isCloudMode) "REMOTE HASHRATE (RT)" else "REAL-TIME HASHRATE",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 0.8.sp
-                )
-
-                Surface(
-                    color = if (isStaleCloud) MaterialTheme.colorScheme.error.copy(alpha = 0.15f) else if (isCloudMode) CyberCyan.copy(alpha = 0.15f) else if (isOnline) AntminerEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = if (isStaleCloud) "NO SIGNAL" else if (isCloudMode) "CLOUD LIVE" else if (isOnline) "ONLINE" else "OFFLINE",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isStaleCloud) MaterialTheme.colorScheme.error else if (isCloudMode) CyberCyan else if (isOnline) AntminerEmerald else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = if (hashrate > 0.0) String.format(Locale.US, "%.2f", hashrate) else "--",
-                fontSize = 38.sp,
-                fontWeight = FontWeight.Black,
-                fontFamily = LocalDataFontFamily.current,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = "TH/s",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (isCloudMode) CyberCyan else MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Secondary rates
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Avg Hashrate",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (avgRate > 0.0) String.format(Locale.US, "%.1f TH/s", avgRate) else "--",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = LocalDataFontFamily.current,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Ideal Target",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = String.format(Locale.US, "%.1f TH/s", idealRate),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = LocalDataFontFamily.current,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** The quick-metric card — shared by Home and the unified detail. (Moved here from HomeScreen in v0.1.7.) */
-@Composable
-fun MetricCard(
-    title: String,
-    value: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    accentColor: Color = MaterialTheme.colorScheme.primary
-) {
-    Card(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = SolidColor(MaterialTheme.colorScheme.outline)
-        ),
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = LocalDataFontFamily.current,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accentColor,
-                modifier = Modifier.size(16.dp)
-            )
-        }
     }
 }
