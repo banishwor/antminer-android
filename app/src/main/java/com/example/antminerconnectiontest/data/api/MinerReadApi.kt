@@ -4,6 +4,7 @@ import com.example.antminerconnectiontest.data.AntminerClient
 import com.example.antminerconnectiontest.data.ConnectionResult
 import com.example.antminerconnectiontest.data.parser.AntminerJsonParsers
 import com.example.antminerconnectiontest.domain.model.*
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -122,6 +123,8 @@ class AntminerReadApiImpl(
                     } else {
                         Result.failure(Exception("Firmware rejected backup creation (code=$code, stats=$stats): $msg"))
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Result.failure(Exception("Failed to parse backup creation response: ${e.message}", e))
                 }
@@ -181,6 +184,8 @@ class AntminerReadApiImpl(
                 try {
                     val parsed = parser(result.responseBody)
                     Result.success(parsed)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Result.failure(Exception("Failed to parse response from $endpointPath: ${e.message}", e))
                 }

@@ -2,6 +2,7 @@ package com.example.antminerconnectiontest.data.cloud
 
 import com.example.antminerconnectiontest.domain.model.CloudSyncResponse
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -98,6 +99,8 @@ class CloudSyncManager(
                         )
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -161,6 +164,8 @@ class CloudSyncManager(
                     val count = json.optInt("count", localMiners.size)
                     Result.success(count)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }

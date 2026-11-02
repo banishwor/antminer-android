@@ -5,6 +5,7 @@ import com.burgstaller.okhttp.CachingAuthenticatorDecorator
 import com.burgstaller.okhttp.digest.CachingAuthenticator
 import com.burgstaller.okhttp.digest.Credentials
 import com.burgstaller.okhttp.digest.DigestAuthenticator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -215,6 +216,10 @@ class AntminerClient {
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            // Never convert coroutine cancellation into a ConnectionResult:
+            // callers cancel fetches on purpose (e.g. a miner switch).
+            throw e
         } catch (e: SocketTimeoutException) {
             ConnectionResult.Failure(
                 errorType = ErrorType.TIMEOUT,
@@ -309,6 +314,8 @@ class AntminerClient {
                     )
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleException(e, targetUrl, startTime)
         }
@@ -373,6 +380,8 @@ class AntminerClient {
 
                 Result.success(destinationFile)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (destinationFile.exists()) destinationFile.delete()
             Result.failure(e)
