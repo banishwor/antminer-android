@@ -186,6 +186,99 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun startChoice_defaultsToNull_untilUserChooses() {
+        val viewModel = DashboardViewModel()
+        assertNull(viewModel.uiState.value.startChoice)
+
+        viewModel.chooseRemoteStart()
+        assertEquals(StartChoice.REMOTE, viewModel.uiState.value.startChoice)
+    }
+
+    @Test
+    fun chooseScanStart_setsChoiceAndAttemptsScan() {
+        val viewModel = DashboardViewModel()
+        viewModel.chooseScanStart()
+
+        assertEquals(StartChoice.SCAN, viewModel.uiState.value.startChoice)
+        // The explicit tap DOES start the scan flow; in the test
+        // environment there is no Wi-Fi, so it lands on the Wi-Fi notice
+        // instead of scanning — which proves the attempt happened.
+        assertTrue(viewModel.uiState.value.scannerState.activeIp.contains("Wi-Fi"))
+        assertFalse(viewModel.uiState.value.scannerState.isScanning)
+    }
+
+    @Test
+    fun selectSetupTab_scanner_doesNotAutoStartScan() {
+        val viewModel = DashboardViewModel()
+        // Regression: navigating to the scanner tab used to start a scan
+        // as a side effect. Scans now start only from explicit actions.
+        viewModel.selectSetupTab(SetupTab.SCANNER)
+
+        assertEquals(SetupTab.SCANNER, viewModel.uiState.value.setupTab)
+        assertFalse(viewModel.uiState.value.scannerState.isScanning)
+        assertEquals("", viewModel.uiState.value.scannerState.activeIp)
+    }
+
+    @Test
+    fun selectRemoteMiner_sameMachineAsLocal_activatesLocalAndKeepsRemoteSelection() {
+        val manager = com.example.antminerconnectiontest.data.repository.MinerProfileManager()
+        val local = MinerProfile(id = "p1", workerName = "banishwor.001", host = "192.168.1.10")
+        manager.saveOrUpdateProfile(local)
+        val viewModel = DashboardViewModel(profileManager = manager)
+        testDispatcher.scheduler.runCurrent()
+
+        val remote = com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot(
+            user = "banishwor",
+            id = "banishwor.001",
+            nickname = "banishwor.001 (Antminer S19k Pro)",
+            ip = "192.168.1.10",
+            hashrate5s = 110.0,
+            avgHashrate = 109.0,
+            maxTemp = 62,
+            maxFan = 6000,
+            status = "Online",
+            lastUpdated = ""
+        )
+        viewModel.selectRemoteMiner(remote)
+
+        // One machine: the local profile is activated (so live local data
+        // can be fetched and win) AND the remote selection is kept (so the
+        // snapshot shows while local data is unavailable).
+        assertEquals("p1", viewModel.uiState.value.activeProfile?.id)
+        assertEquals(remote, viewModel.uiState.value.selectedRemoteMiner)
+    }
+
+    @Test
+    fun mergedMiners_sameMachineAppearsOnce() {
+        val manager = com.example.antminerconnectiontest.data.repository.MinerProfileManager()
+        val local = MinerProfile(id = "p1", workerName = "banishwor.001", host = "192.168.1.10")
+        manager.saveOrUpdateProfile(local)
+        val viewModel = DashboardViewModel(profileManager = manager)
+        testDispatcher.scheduler.runCurrent()
+
+        val remote = com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot(
+            user = "banishwor",
+            id = "banishwor.001",
+            nickname = "banishwor.001 (Antminer S19k Pro)",
+            ip = "192.168.1.10",
+            hashrate5s = 110.0,
+            avgHashrate = 109.0,
+            maxTemp = 62,
+            maxFan = 6000,
+            status = "Online",
+            lastUpdated = ""
+        )
+        viewModel.selectRemoteMiner(remote)
+        testDispatcher.scheduler.runCurrent()
+
+        val entries = viewModel.mergedMiners.value
+        assertEquals(1, entries.size)
+        assertTrue(entries[0].isMerged)
+        assertEquals("p1", entries[0].localProfile?.id)
+        assertEquals("banishwor.001", entries[0].remoteSnapshot?.id)
+    }
+
+    @Test
     fun openDiscoveredMiner_updatesHostIfIpChanged() {
         val viewModel = DashboardViewModel()
         val profile = MinerProfile(

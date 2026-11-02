@@ -32,6 +32,7 @@ class MinerStorageManager(context: Context) {
     companion object {
         private const val KEY_PROFILES = "key_miner_profiles"
         private const val KEY_ACTIVE_ID = "key_active_profile_id"
+        private const val KEY_START_CHOICE = "key_start_choice"
 
         /** Marks an encrypted payload: prefix + Base64(IV || ciphertext). */
         private const val ENCRYPTED_PREFIX = "enc_v1:"
@@ -162,6 +163,24 @@ class MinerStorageManager(context: Context) {
             prefs.edit().putString(KEY_PROFILES, stored).apply()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * The user's first-open start choice ("REMOTE" / "SCAN"), or null when
+     * they have never been asked. Persisted so the choice is only asked
+     * once — afterwards the app opens in the mode they picked (and both
+     * modes stay reachable from inside).
+     */
+    fun loadStartChoice(): String? {
+        return prefs.getString(KEY_START_CHOICE, null)
+    }
+
+    fun saveStartChoice(choice: String?) {
+        if (choice != null) {
+            prefs.edit().putString(KEY_START_CHOICE, choice).apply()
+        } else {
+            prefs.edit().remove(KEY_START_CHOICE).apply()
         }
     }
 

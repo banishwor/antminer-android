@@ -49,6 +49,18 @@ enum class SetupTab {
     SCANNER
 }
 
+/**
+ * How the user chose to start on first open. Persisted (see
+ * MinerStorageManager.loadStartChoice) so it is asked exactly once.
+ * Neither choice locks anything in: Remote starters can add local miners
+ * when they are on site, and Scan starters can use Remote View any time
+ * from the dashboard.
+ */
+enum class StartChoice {
+    REMOTE,
+    SCAN
+}
+
 data class SetupFormState(
     val ip: String = "192.168.1.2",
     val username: String = "root",
@@ -96,6 +108,10 @@ data class AppUiState(
     val lastLogUpdated: Long? = null,
     val dailyAnalysisState: DailyAnalysisUiState = DailyAnalysisUiState(),
     val cloudConfig: CloudSyncConfig = CloudSyncConfig(),
+    /** First-open start choice; null = not chosen yet (fresh install). */
+    val startChoice: StartChoice? = null,
+    /** Remote starter is on the setup flow to add a local miner on site. */
+    val isLocalSetupOpen: Boolean = false,
     val remoteMiners: List<RemoteMinerSnapshot> = emptyList(),
     val selectedRemoteMiner: RemoteMinerSnapshot? = null,
     val isTestingCloud: Boolean = false,
@@ -158,6 +174,36 @@ class DashboardViewModel(
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
+    /**
+     * The unified machine list: saved local profiles merged with cloud
+     * snapshots, one entry per physical machine (see [MinerMerge]).
+     * Derived continuously from the source flows — profile saves, race
+     * poller readings, cloud sync cycles and dashboard refreshes all flow
+     * through here — so the merge survives every refresh cycle without
+     * flickering or duplicating a machine.
+     */
+    val mergedMiners: StateFlow<List<MergedMinerEntry>> = combine(
+        profileManager.savedProfiles,
+        _uiState.map { it.remoteMiners }.distinctUntilChanged(),
+        multiMinerPoller.minerHashrates,
+        repository.activeProfile,
+        repository.dashboardData
+    ) { profiles, remoteSnapshots, raceRates, active, data ->
+        MinerMerge.merge(
+            profiles = profiles,
+            snapshots = remoteSnapshots,
+            localData = MinerMerge.LocalData(
+                activeProfileId = active?.id,
+                activeDataProfileId = data?.profileId,
+                activeDataOnline = data?.isOnline == true,
+                activeHashrateTh = data?.summary?.let { summary ->
+                    summary.hashrate5s.takeIf { it > 0.0 } ?: summary.hashrateAvg.takeIf { it > 0.0 }
+                },
+                raceHashrates = raceRates
+            )
+        )
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     fun setThemeMode(mode: ThemeMode) {
         _uiState.update { it.copy(themeMode = mode) }
     }
@@ -202,7 +248,20 @@ class DashboardViewModel(
         // Load persistent cloud config
         if (storageManager != null) {
             val savedCloudConfig = storageManager.loadCloudConfig()
-            _uiState.update { it.copy(cloudConfig = savedCloudConfig) }
+            // Load the start choice and the saved profiles synchronously so
+            // the very first frame routes correctly: a returning user with
+            // miners must never flash the first-open choice screen while
+            // the async collectors are still starting.
+            val savedStartChoice = storageManager.loadStartChoice()?.let { stored ->
+                StartChoice.values().firstOrNull { it.name == stored }
+            }
+            _uiState.update {
+                it.copy(
+                    cloudConfig = savedCloudConfig,
+                    startChoice = savedStartChoice,
+                    savedProfiles = profileManager.savedProfiles.value
+                )
+            }
             if (savedCloudConfig.isBackgroundServiceEnabled && savedCloudConfig.isSyncEnabled) {
                 try {
                     com.example.antminerconnectiontest.service.MinerRelayService.start(getApplication())
@@ -842,10 +901,43 @@ class DashboardViewModel(
     }
 
     fun selectSetupTab(tab: SetupTab) {
+        // Deliberately NO auto-scan here: a scan only ever starts from an
+        // explicit user action (the Start Scan choice, or the scan button
+        // on the setup screen) — never as a side effect of navigation.
         _uiState.update { it.copy(setupTab = tab) }
-        if (tab == SetupTab.SCANNER && !_uiState.value.scannerState.isScanning && _uiState.value.scannerState.scannedCount == 0) {
-            startNetworkScan()
-        }
+    }
+
+    /**
+     * First-open choice: "Start as Remote View". Goes to the remote/cloud
+     * farm view without touching the local network — no scan is started.
+     * If cloud relay is not configured yet, the remote screen itself hosts
+     * the existing cloud setup fields. Local miners can still be added
+     * later from that screen when the user is on site.
+     */
+    fun chooseRemoteStart() {
+        storageManager?.saveStartChoice(StartChoice.REMOTE.name)
+        _uiState.update { it.copy(startChoice = StartChoice.REMOTE) }
+        syncCloudNow()
+    }
+
+    /**
+     * First-open choice: "Start scan". Goes to the setup flow and starts
+     * the local subnet scan immediately — this tap IS the explicit user
+     * action that authorises the scan.
+     */
+    fun chooseScanStart() {
+        storageManager?.saveStartChoice(StartChoice.SCAN.name)
+        _uiState.update { it.copy(startChoice = StartChoice.SCAN) }
+        startNetworkScan()
+    }
+
+    /** Remote starter, now on site, wants to add a local miner. */
+    fun openLocalSetup() {
+        _uiState.update { it.copy(isLocalSetupOpen = true) }
+    }
+
+    fun closeLocalSetup() {
+        _uiState.update { it.copy(isLocalSetupOpen = false) }
     }
 
     fun toggleProfileSwitcher(isOpen: Boolean? = null) {
@@ -855,11 +947,35 @@ class DashboardViewModel(
     }
 
     fun selectRemoteMiner(remote: RemoteMinerSnapshot) {
-        _uiState.update {
-            it.copy(
-                selectedRemoteMiner = remote,
-                selectedTab = DashboardTab.HOME
-            )
+        // Same machine saved locally? Then this is ONE machine, not two:
+        // activate the local profile as well, so live local data is fetched
+        // and wins for display (Home shows the remote snapshot only while
+        // local data for this machine is unavailable). The remote selection
+        // itself is kept — it is the user's deliberate view choice.
+        val localMatch = MinerMerge.findLocalMatch(remote, _uiState.value.savedProfiles)
+        if (localMatch != null) {
+            _uiState.update {
+                it.copy(
+                    selectedRemoteMiner = remote,
+                    activeProfile = localMatch,
+                    selectedTab = DashboardTab.HOME,
+                    currentLogText = null,
+                    historyLogText = null,
+                    dailyAnalysisState = DailyAnalysisUiState(loadedForMinerId = localMatch.id)
+                )
+            }
+            profileManager.selectProfile(localMatch.id)
+            repository.setActiveProfile(localMatch)
+            viewModelScope.launch {
+                repository.refreshDashboardData()
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    selectedRemoteMiner = remote,
+                    selectedTab = DashboardTab.HOME
+                )
+            }
         }
     }
 
@@ -1049,6 +1165,7 @@ class DashboardViewModel(
                     it.copy(
                         activeProfile = persisted,
                         setupForm = it.setupForm.copy(isVerifying = false),
+                        isLocalSetupOpen = false,
                         selectedTab = DashboardTab.HOME,
                         currentLogText = null,
                         historyLogText = null,
@@ -1104,6 +1221,7 @@ class DashboardViewModel(
                         activeProfile = persisted,
                         setupForm = it.setupForm.copy(isVerifying = false),
                         selectedScannerMiner = null,
+                        isLocalSetupOpen = false,
                         selectedTab = DashboardTab.HOME,
                         currentLogText = null,
                         historyLogText = null,
