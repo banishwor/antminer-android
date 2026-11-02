@@ -227,6 +227,7 @@ fun HardwareScreen(
         Spacer(modifier = Modifier.height(16.dp))
     }
     }
+    }
 }
 
 @Composable
