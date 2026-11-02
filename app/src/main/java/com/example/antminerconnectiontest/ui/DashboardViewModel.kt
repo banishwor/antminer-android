@@ -547,7 +547,7 @@ class DashboardViewModel(
                     // 60 °C / 6000 RPM for every non-active miner.
                     val maxTemp = if (isActive && isLocalOnline) currentData?.stats?.maxChipTemp ?: 0 else 0
                     val maxFan = if (isActive && isLocalOnline) currentData?.stats?.maxFanRpm ?: 0 else 0
-                    RemoteMinerSnapshot(
+                    val base = RemoteMinerSnapshot(
                         user = cfg.userName.trim(),
                         id = sheetId,
                         nickname = profile.effectiveName,
@@ -559,6 +559,26 @@ class DashboardViewModel(
                         status = "Online",
                         lastUpdated = ""
                     )
+                    // Extended telemetry (v0.1.6): the full dashboard
+                    // data exists only for the ACTIVE miner; every other
+                    // profile contributes just its cached model name and
+                    // leaves the rest unknown rather than borrowing the
+                    // active machine's readings.
+                    if (isActive && isLocalOnline && currentData != null) {
+                        base.withTelemetry(
+                            summary = currentData.summary,
+                            stats = currentData.stats,
+                            pools = currentData.pools,
+                            systemInfo = currentData.systemInfo,
+                            fallbackModel = profile.cachedModel ?: ""
+                        )
+                    } else {
+                        base.withTelemetry(
+                            summary = null, stats = null,
+                            pools = emptyList(), systemInfo = null,
+                            fallbackModel = profile.cachedModel ?: ""
+                        )
+                    }
                 } else {
                     null
                 }

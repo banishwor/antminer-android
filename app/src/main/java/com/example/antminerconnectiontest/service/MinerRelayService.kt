@@ -12,9 +12,11 @@ import com.example.antminerconnectiontest.data.api.MinerReadApi
 import com.example.antminerconnectiontest.data.cloud.CloudSyncManager
 import com.example.antminerconnectiontest.data.storage.MinerStorageManager
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
+import com.example.antminerconnectiontest.domain.model.MinerPool
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RelayUpload
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
+import com.example.antminerconnectiontest.domain.model.withTelemetry
 import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -103,6 +105,13 @@ class MinerRelayService : Service() {
                                     if (summaryRes.isSuccess && summary != null) {
                                         val statsRes = readApi.getStats(profile)
                                         val stats = statsRes.getOrNull()
+                                        // Pools + system info feed the
+                                        // extended telemetry (v0.1.6) and
+                                        // the identity resolution below.
+                                        // Best-effort: a failed fetch just
+                                        // leaves those fields unknown.
+                                        val pools = readApi.getPools(profile).getOrNull().orEmpty()
+                                        val systemInfo = readApi.getSystemInfo(profile).getOrNull()
 
                                         val rate5s = summary.hashrate5s
                                         val avgRate = if (summary.hashrateAvg > 0.0) summary.hashrateAvg else rate5s
@@ -122,7 +131,7 @@ class MinerRelayService : Service() {
                                             // under this device's profile UUID,
                                             // which used to fork one machine
                                             // into two sheet rows.
-                                            val sheetId = resolveSheetId(profile)
+                                            val sheetId = resolveSheetId(profile, pools)
                                             if (sheetId == null) {
                                                 deferredCount++
                                             }
@@ -139,6 +148,12 @@ class MinerRelayService : Service() {
                                                         maxFan = maxFan,
                                                         status = "Online",
                                                         lastUpdated = ""
+                                                    ).withTelemetry(
+                                                        summary = summary,
+                                                        stats = stats,
+                                                        pools = pools,
+                                                        systemInfo = systemInfo,
+                                                        fallbackModel = profile.cachedModel ?: ""
                                                     )
                                                 )
                                             }
@@ -206,11 +221,14 @@ class MinerRelayService : Service() {
      * row. Null when the identity cannot be established — the caller
      * defers the upload rather than substituting the profile UUID.
      */
-    private suspend fun resolveSheetId(profile: MinerProfile): String? {
+    private suspend fun resolveSheetId(
+        profile: MinerProfile,
+        prefetchedPools: List<MinerPool>? = null
+    ): String? {
         RelayUpload.sheetIdFor(profile)?.let { return it }
         val learned = try {
-            readApi.getPools(profile).getOrNull()
-                ?.firstOrNull { it.user.isNotBlank() }?.user
+            (prefetchedPools ?: readApi.getPools(profile).getOrNull().orEmpty())
+                .firstOrNull { it.user.isNotBlank() }?.user
         } catch (e: Exception) {
             null
         }
