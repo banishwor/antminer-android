@@ -174,6 +174,7 @@ class DashboardViewModel(
     private var scanJob: Job? = null
     private var cloudSyncJob: Job? = null
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var wifiRefreshCallback: android.net.ConnectivityManager.NetworkCallback? = null
 
     init {
         // Observe real-time Wi-Fi connectivity changes
@@ -299,13 +300,16 @@ class DashboardViewModel(
         // Immediate cloud sync on startup (< 100ms)
         syncCloudNow()
 
-        // Auto-refresh when Wi-Fi connects or disconnects
+        // Auto-refresh when Wi-Fi connects or disconnects. Stored in a field
+        // (it used to be anonymous) so onCleared() can unregister it — the
+        // leaked registration kept every dead ViewModel generation receiving
+        // Wi-Fi events and firing ghost refreshes.
         try {
             val cm = application.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
             val request = android.net.NetworkRequest.Builder()
                 .addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI)
                 .build()
-            cm?.registerNetworkCallback(request, object : android.net.ConnectivityManager.NetworkCallback() {
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: android.net.Network) {
                     viewModelScope.launch {
                         delay(600L) // Wait 600ms for Wi-Fi IP assignment
@@ -324,7 +328,9 @@ class DashboardViewModel(
                         syncCloudNow()
                     }
                 }
-            })
+            }
+            cm?.registerNetworkCallback(request, callback)
+            wifiRefreshCallback = callback
         } catch (_: Throwable) {}
 
         // Start Cloud Sync Loop
@@ -1318,6 +1324,7 @@ class DashboardViewModel(
         try {
             val cm = getApplication<Application>()?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
             networkCallback?.let { cm?.unregisterNetworkCallback(it) }
+            wifiRefreshCallback?.let { cm?.unregisterNetworkCallback(it) }
         } catch (_: Throwable) {}
     }
 }
