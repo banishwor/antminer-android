@@ -125,6 +125,10 @@ fun HomeScreen(
     }
 
     val idealRate = when {
+        // Cloud mode: the relayed ideal (v0.1.6 telemetry) is the real
+        // nameplate rate for the remote machine; only rows written
+        // before it existed fall through to the generic default.
+        isCloudMode && (effectiveRemote?.idealHashrate ?: 0.0) > 0.0 -> effectiveRemote!!.idealHashrate!!
         (summary?.hashrateIdeal ?: 0.0) > 0.0 -> summary!!.hashrateIdeal
         (stats?.chains?.sumOf { it.idealHashrateTh } ?: 0.0) > 0.0 -> stats!!.chains.sumOf { it.idealHashrateTh }
         else -> 120.0
