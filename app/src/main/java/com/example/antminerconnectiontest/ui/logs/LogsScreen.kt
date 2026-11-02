@@ -12,11 +12,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -35,13 +35,12 @@ import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.DailyAnalysisUiState
 import com.example.antminerconnectiontest.ui.LogsTab
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private const val MAX_RENDERED_LOG_LINES = 2000
 
 @Composable
 fun LogsScreen(
@@ -67,34 +66,33 @@ fun LogsScreen(
     val context = LocalContext.current
     val activeLogText = if (selectedTab == LogsTab.CURRENT) currentLogText else historyLogText
 
-    val currentScrollState = rememberScrollState()
-    val historyScrollState = rememberScrollState()
-    val scrollState = if (selectedTab == LogsTab.CURRENT) currentScrollState else historyScrollState
+    val currentListState = rememberLazyListState()
+    val historyListState = rememberLazyListState()
+    val listState = if (selectedTab == LogsTab.CURRENT) currentListState else historyListState
     val coroutineScope = rememberCoroutineScope()
 
+    // Cap the rendered lines (see the console card below): only the most
+    // recent MAX_RENDERED_LOG_LINES are composed. The full text is still
+    // what the Copy button copies.
+    val allLogLines = remember(activeLogText) { activeLogText?.lines() ?: emptyList() }
+    val isLogTruncated = allLogLines.size > MAX_RENDERED_LOG_LINES
+    val visibleLogLines = remember(allLogLines) {
+        if (isLogTruncated) allLogLines.takeLast(MAX_RENDERED_LOG_LINES) else allLogLines
+    }
+
     // Automatically snap to the bottom (latest logs) whenever log text arrives or tab changes
-    LaunchedEffect(activeLogText, selectedTab) {
-        if (!activeLogText.isNullOrBlank()) {
-            withTimeoutOrNull(600L) {
-                snapshotFlow { scrollState.maxValue }
-                    .filter { it > 0 }
-                    .first()
-            }?.let { maxVal ->
-                scrollState.scrollTo(maxVal)
-            }
+    LaunchedEffect(visibleLogLines, selectedTab) {
+        if (visibleLogLines.isNotEmpty()) {
+            listState.scrollToItem(visibleLogLines.lastIndex)
         }
     }
 
     val isScrolledUp by remember {
-        derivedStateOf {
-            scrollState.maxValue > 0 && (scrollState.maxValue - scrollState.value > 200)
-        }
+        derivedStateOf { listState.canScrollForward }
     }
 
     val isScrolledDown by remember {
-        derivedStateOf {
-            scrollState.value > 300
-        }
+        derivedStateOf { listState.canScrollBackward }
     }
 
     if (!isOnline) {
@@ -165,7 +163,7 @@ fun LogsScreen(
                 if (selectedTab != LogsTab.DAILY_ANALYSIS && isScrolledDown && !activeLogText.isNullOrBlank()) {
                     IconButton(onClick = {
                         coroutineScope.launch {
-                            scrollState.animateScrollTo(0)
+                            listState.animateScrollToItem(0)
                         }
                     }) {
                         Icon(
@@ -365,17 +363,33 @@ fun LogsScreen(
                     }
 
                     else -> {
-                        SelectionContainer {
-                            Text(
-                                text = activeLogText,
-                                color = Color(0xFFE2E8F0),
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp,
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            if (isLogTruncated) {
+                                Text(
+                                    text = "Showing last $MAX_RENDERED_LOG_LINES of ${allLogLines.size} lines",
+                                    color = Color(0xFF94A3B8),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                            // Lazy list: the entire log used to be a single Text,
+                            // which made opening and scrolling large logs janky.
+                            LazyColumn(
+                                state = listState,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .verticalScroll(scrollState)
-                            )
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                itemsIndexed(visibleLogLines) { _, line ->
+                                    Text(
+                                        text = line.ifEmpty { " " },
+                                        color = Color(0xFFE2E8F0),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -392,7 +406,9 @@ fun LogsScreen(
                     FilledTonalButton(
                         onClick = {
                             coroutineScope.launch {
-                                scrollState.animateScrollTo(scrollState.maxValue)
+                                if (visibleLogLines.isNotEmpty()) {
+                                    listState.animateScrollToItem(visibleLogLines.lastIndex)
+                                }
                             }
                         },
                         colors = ButtonDefaults.filledTonalButtonColors(
