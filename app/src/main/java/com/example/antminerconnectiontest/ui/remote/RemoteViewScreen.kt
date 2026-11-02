@@ -15,14 +15,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.antminerconnectiontest.domain.model.FleetSorting
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.AntminerEmerald
 import com.example.antminerconnectiontest.theme.CyberCyan
+import com.example.antminerconnectiontest.theme.LocalDataFontFamily
 import com.example.antminerconnectiontest.theme.ThemeMode
 import com.example.antminerconnectiontest.ui.AppUiState
 import com.example.antminerconnectiontest.ui.DashboardViewModel
@@ -178,11 +179,23 @@ fun RemoteViewScreen(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    mergedMiners.forEach { entry ->
+                    Text(
+                        text = "Sorted by hashrate · offline last",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val nowMs = System.currentTimeMillis()
+                    FleetSorting.sortEntries(mergedMiners, nowMs).forEach { row ->
                         RemoteMinerRow(
-                            entry = entry,
+                            entry = row.entry,
+                            isOnline = row.isOnline,
+                            lastUpdatedLabel = if (row.isOnline) {
+                                FleetSorting.formatUpdatedShort(row.lastUpdatedEpochMs, nowMs)
+                            } else {
+                                FleetSorting.formatLastUpdated(row.lastUpdatedEpochMs, nowMs)
+                            },
                             onClick = {
-                                entry.remoteSnapshot?.let { viewModel.selectRemoteMiner(it) }
+                                row.entry.remoteSnapshot?.let { viewModel.selectRemoteMiner(it) }
                             }
                         )
                     }
@@ -352,10 +365,12 @@ private fun CloudSetupCard(
 @Composable
 private fun RemoteMinerRow(
     entry: MergedMinerEntry,
+    isOnline: Boolean = true,
+    lastUpdatedLabel: String = "",
     onClick: () -> Unit
 ) {
     val snapshot = entry.remoteSnapshot ?: return
-    val isStale = snapshot.isStale
+    val isStale = !isOnline
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -381,21 +396,24 @@ private fun RemoteMinerRow(
                 )
                 Text(
                     text = "☁️ ${snapshot.user} • ${snapshot.ip}",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = LocalDataFontFamily.current,
                     style = MaterialTheme.typography.bodySmall,
                     color = CyberCyan
                 )
                 Text(
-                    text = "Updated ${snapshot.timeAgoFormatted}",
+                    text = lastUpdatedLabel.ifBlank {
+                        if (isStale) "Last updated —" else "Updated ${snapshot.timeAgoFormatted}"
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontWeight = if (isStale) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isStale) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = if (isStale) "Offline" else if (entry.displayHashrateTh > 0.0) String.format(Locale.US, "%.1f TH/s", entry.displayHashrateTh) else "0.0 TH/s",
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = LocalDataFontFamily.current,
                     color = if (isStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
@@ -431,15 +449,30 @@ private fun RemoteMinerDetailCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = snapshot.effectiveDisplayName,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = snapshot.effectiveDisplayName,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            color = CyberCyan.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "REMOTE",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberCyan,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                     Text(
                         text = "Cloud Owner: ${snapshot.user} • ${snapshot.ip}",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = LocalDataFontFamily.current,
                         style = MaterialTheme.typography.bodySmall,
                         color = CyberCyan
                     )
@@ -456,7 +489,7 @@ private fun RemoteMinerDetailCard(
                     text = if (snapshot.effectiveHashrate5s > 0.0) String.format(Locale.US, "%.2f", snapshot.effectiveHashrate5s) else "--",
                     fontSize = 36.sp,
                     fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = LocalDataFontFamily.current,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
@@ -478,11 +511,51 @@ private fun RemoteMinerDetailCard(
             }
 
             Text(
-                text = "Last updated ${snapshot.timeAgoFormatted}${if (snapshot.isStale) " — signal lost (>2m), values may be stale" else ""}",
+                text = "Updated ${snapshot.timeAgoFormatted} · via relay${if (snapshot.isStale) " — signal lost (>2m), values may be stale" else ""}",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (snapshot.isStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+
+            // The relay snapshot carries no chain-level detail and no
+            // logs — show those sections as what they are (available on
+            // location only) instead of inventing values for them.
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                UnavailableSection("Chain details", "ASIC status, per-board temps and frequencies")
+                UnavailableSection("Logs", "Miner event and kernel logs")
+                Text(
+                    text = "Available on location only — connect on the miner's Wi-Fi to view.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun UnavailableSection(title: String, description: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Default.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = description,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        )
     }
 }
 
@@ -498,7 +571,7 @@ private fun DetailMetric(label: String, value: String) {
             text = value,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = LocalDataFontFamily.current,
             color = MaterialTheme.colorScheme.onSurface
         )
     }
