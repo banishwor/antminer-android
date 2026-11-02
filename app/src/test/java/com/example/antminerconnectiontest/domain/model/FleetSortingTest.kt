@@ -1,0 +1,213 @@
+package com.example.antminerconnectiontest.domain.model
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class FleetSortingTest {
+
+    private val now = 1_798_000_000_000L // fixed "now" for deterministic tests
+    private val dayMs = 24L * 60 * 60 * 1000
+
+    private fun profile(id: String, worker: String = "", lastConnected: Long = 0L) = MinerProfile(
+        id = id,
+        workerName = worker,
+        host = "192.168.1.10",
+        lastConnected = lastConnected
+    )
+
+    private fun snapshot(
+        id: String,
+        rate: Double,
+        updatedEpochMs: Long?,
+        user: String = "banishwor"
+    ) = RemoteMinerSnapshot(
+        user = user,
+        id = id,
+        nickname = id,
+        ip = "192.168.1.10",
+        hashrate5s = rate,
+        avgHashrate = rate,
+        maxTemp = 62,
+        maxFan = 4200,
+        status = "Online",
+        lastUpdated = updatedEpochMs?.toString() ?: ""
+    )
+
+    // --- Online determination ---------------------------------------------
+
+    @Test
+    fun liveLocalDataIsOnline() {
+        val entry = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1"),
+            hasLiveLocalData = true
+        )
+        assertTrue(FleetSorting.isOnline(entry, now))
+    }
+
+    @Test
+    fun raceReadingIsOnline() {
+        val entry = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1"),
+            localHashrateTh = 37.1
+        )
+        assertTrue(FleetSorting.isOnline(entry, now))
+    }
+
+    @Test
+    fun freshRemoteSnapshotIsOnline() {
+        val entry = MergedMinerEntry(
+            key = "remote:a",
+            remoteSnapshot = snapshot("bani009.001", 35.4, now - 60_000L)
+        )
+        assertTrue(FleetSorting.isOnline(entry, now))
+    }
+
+    @Test
+    fun staleRemoteSnapshotIsOffline() {
+        val entry = MergedMinerEntry(
+            key = "remote:a",
+            remoteSnapshot = snapshot("bani009.201", 33.0, now - 6 * dayMs)
+        )
+        assertFalse(FleetSorting.isOnline(entry, now))
+    }
+
+    @Test
+    fun localOnlyWithoutReadingIsOffline() {
+        val entry = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1", lastConnected = now - dayMs)
+        )
+        assertFalse(FleetSorting.isOnline(entry, now))
+    }
+
+    // --- Sorting ------------------------------------------------------------
+
+    @Test
+    fun onlineSortedByHashrateDescendingOfflineBelow() {
+        val merged = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1", "banishwor.001"),
+            remoteSnapshot = snapshot("banishwor.001", 30.0, now - 60_000L),
+            localHashrateTh = 37.1
+        )
+        val remoteFast = MergedMinerEntry(
+            key = "remote:b",
+            remoteSnapshot = snapshot("bani009.001", 35.4, now - 60_000L)
+        )
+        val remoteSlow = MergedMinerEntry(
+            key = "remote:c",
+            remoteSnapshot = snapshot("bani009.002", 33.9, now - 60_000L)
+        )
+        val offlineLocal = MergedMinerEntry(
+            key = "local:2",
+            localProfile = profile("2", "banishwor.002", lastConnected = now - 3_600_000L)
+        )
+        val offlineRemote = MergedMinerEntry(
+            key = "remote:d",
+            remoteSnapshot = snapshot("bani009.201", 40.0, now - 6 * dayMs)
+        )
+
+        val sorted = FleetSorting.sortEntries(
+            listOf(offlineRemote, remoteSlow, merged, offlineLocal, remoteFast), now
+        )
+
+        assertEquals(
+            listOf("banishwor.001", "bani009.001", "bani009.002", "banishwor.002", "bani009.201"),
+            sorted.map { it.workerName }
+        )
+        // The offline remote machine had the highest snapshot rate of all —
+        // it still sits below every online machine, showing 0.
+        assertFalse(sorted.last().isOnline)
+        assertEquals(0.0, sorted.last().hashrateTh, 0.0001)
+    }
+
+    @Test
+    fun offlineOrderedByMostRecentUpdateFirstUnknownTimestampLast() {
+        val older = MergedMinerEntry(
+            key = "remote:old",
+            remoteSnapshot = snapshot("old.001", 10.0, now - 6 * dayMs)
+        )
+        val newer = MergedMinerEntry(
+            key = "local:new",
+            localProfile = profile("n", "new.001", lastConnected = now - 3_600_000L)
+        )
+        val unknown = MergedMinerEntry(
+            key = "remote:unk",
+            remoteSnapshot = snapshot("unk.001", 10.0, null)
+        )
+        val sorted = FleetSorting.sortEntries(listOf(older, unknown, newer), now)
+        assertEquals(listOf("new.001", "old.001", "unk.001"), sorted.map { it.workerName })
+    }
+
+    @Test
+    fun fleetTotalSumsOnlineOnly() {
+        val rows = FleetSorting.sortEntries(
+            listOf(
+                MergedMinerEntry(key = "local:1", localProfile = profile("1"), localHashrateTh = 37.1),
+                MergedMinerEntry(key = "remote:b", remoteSnapshot = snapshot("b.001", 35.4, now - 60_000L)),
+                MergedMinerEntry(key = "remote:c", remoteSnapshot = snapshot("c.001", 99.0, now - 6 * dayMs))
+            ),
+            now
+        )
+        assertEquals(72.5, FleetSorting.fleetTotalTh(rows), 0.0001)
+    }
+
+    // --- Last-updated formatting --------------------------------------------
+
+    @Test
+    fun lastUpdatedShowsRelativeAndClockTime() {
+        val epoch = now - 6 * dayMs
+        val expectedClock = SimpleDateFormat("d MMM, h:mm a", Locale.US).format(Date(epoch))
+        assertEquals(
+            "Last updated 6 days ago · $expectedClock",
+            FleetSorting.formatLastUpdated(epoch, now)
+        )
+    }
+
+    @Test
+    fun lastUpdatedWithoutTimestampIsHonestDash() {
+        assertEquals("Last updated —", FleetSorting.formatLastUpdated(null, now))
+    }
+
+    @Test
+    fun relativeFormats() {
+        assertEquals("just now", FleetSorting.formatRelative(now - 5_000L, now))
+        assertEquals("2 min ago", FleetSorting.formatRelative(now - 120_000L, now))
+        assertEquals("3 h ago", FleetSorting.formatRelative(now - 3 * 3_600_000L, now))
+        assertEquals("1 day ago", FleetSorting.formatRelative(now - dayMs, now))
+        assertEquals("6 days ago", FleetSorting.formatRelative(now - 6 * dayMs, now))
+    }
+
+    // --- Pool brand -----------------------------------------------------------
+
+    @Test
+    fun poolBrandFromKnownPoolUrls() {
+        assertEquals("ViaBTC", FleetSorting.poolBrandFromUrl("stratum+tcp://stratum.viabtc.com:3333"))
+        assertEquals("AntPool", FleetSorting.poolBrandFromUrl("stratum+tcp://ss.antpool.com:3333"))
+        assertNull(FleetSorting.poolBrandFromUrl(null))
+        assertNull(FleetSorting.poolBrandFromUrl(""))
+        assertNull(FleetSorting.poolBrandFromUrl("   "))
+    }
+
+    @Test
+    fun workerNameFallsBackToRemoteIdentity() {
+        val remoteOnly = MergedMinerEntry(
+            key = "remote:x",
+            remoteSnapshot = snapshot("bani009.001", 10.0, now - 60_000L)
+        )
+        assertEquals("bani009.001", FleetSorting.workerNameOf(remoteOnly))
+        val local = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1", "banishwor.001")
+        )
+        assertEquals("banishwor.001", FleetSorting.workerNameOf(local))
+    }
+}
