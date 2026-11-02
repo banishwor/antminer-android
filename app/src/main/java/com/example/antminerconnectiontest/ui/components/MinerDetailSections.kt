@@ -286,102 +286,11 @@ fun MinerDetailContent(
             }
         }
 
-        // Hash boards
-        SectionTitle("Hash Boards")
-        if (detail.chains.isEmpty()) {
-            UnavailableSection("Chain details", "ASIC status, per-board temps and frequencies are not in this data.")
-        } else {
-            detail.chains.forEach { chain -> MinerChainCard(chain = chain) }
-        }
+        MinerDetailChainsSection(detail)
 
-        // Fans
-        SectionTitle("Fans")
-        if (detail.fanRpms.isEmpty()) {
-            UnavailableSection("Fan list", "Per-fan speeds are not in this data.")
-        } else {
-            if (detail.slowFanCount > 0) {
-                Surface(
-                    color = WarningAmber.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = WarningAmber,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Low Fan Speed Warning: ${detail.slowFanCount} fan(s) spinning below ${TelemetryCodec.SLOW_FAN_RPM} RPM.",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-            detail.fanRpms.forEachIndexed { index, rpm ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Fan ${index + 1}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = String.format(Locale.US, "%,d RPM", rpm),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = LocalDataFontFamily.current,
-                        color = if (rpm < TelemetryCodec.SLOW_FAN_RPM) WarningAmber else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
+        MinerDetailFansSection(detail)
 
-        // Primary pool
-        SectionTitle("Primary Pool")
-        if (detail.poolUrl.isBlank() && detail.poolWorker.isBlank() && detail.poolStatus.isBlank()) {
-            UnavailableSection("Primary pool", "Pool endpoint and share counts are not in this data.")
-        } else {
-            Card(
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (detail.poolUrl.isNotBlank()) {
-                        Text(
-                            text = detail.poolUrl,
-                            fontFamily = LocalDataFontFamily.current,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        DetailMetric("Worker", detail.poolWorker.ifBlank { "--" })
-                        DetailMetric("Status", detail.poolStatus.ifBlank { "--" })
-                        DetailMetric("Accepted", detail.acceptedShares?.toString() ?: "--")
-                        DetailMetric("Rejected", detail.rejectedShares?.toString() ?: "--")
-                    }
-                }
-            }
-        }
+        MinerDetailPoolSection(detail)
 
         // Health flags
         SectionTitle("Health")
@@ -416,6 +325,116 @@ fun MinerDetailContent(
                     style = MaterialTheme.typography.labelSmall,
                     color = if (detail.isStale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Hash boards section of the unified detail, extracted so the shell's
+ * Hardware tab (remote mode, v0.1.8) renders the exact same section
+ * instead of a parallel implementation.
+ */
+@Composable
+fun MinerDetailChainsSection(detail: MinerDetailUi) {
+    SectionTitle("Hash Boards")
+    if (detail.chains.isEmpty()) {
+        UnavailableSection("Chain details", "ASIC status, per-board temps and frequencies are not in this data.")
+    } else {
+        detail.chains.forEach { chain -> MinerChainCard(chain = chain) }
+    }
+}
+
+/** Fans section of the unified detail — see [MinerDetailChainsSection]. */
+@Composable
+fun MinerDetailFansSection(detail: MinerDetailUi) {
+    SectionTitle("Fans")
+    if (detail.fanRpms.isEmpty()) {
+        UnavailableSection("Fan list", "Per-fan speeds are not in this data.")
+    } else {
+        if (detail.slowFanCount > 0) {
+            Surface(
+                color = WarningAmber.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = WarningAmber,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Low Fan Speed Warning: ${detail.slowFanCount} fan(s) spinning below ${TelemetryCodec.SLOW_FAN_RPM} RPM.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+        detail.fanRpms.forEachIndexed { index, rpm ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Fan ${index + 1}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = String.format(Locale.US, "%,d RPM", rpm),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = LocalDataFontFamily.current,
+                    color = if (rpm < TelemetryCodec.SLOW_FAN_RPM) WarningAmber else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+/** Primary pool section of the unified detail — see [MinerDetailChainsSection]. */
+@Composable
+fun MinerDetailPoolSection(detail: MinerDetailUi) {
+    SectionTitle("Primary Pool")
+    if (detail.poolUrl.isBlank() && detail.poolWorker.isBlank() && detail.poolStatus.isBlank()) {
+        UnavailableSection("Primary pool", "Pool endpoint and share counts are not in this data.")
+    } else {
+        Card(
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (detail.poolUrl.isNotBlank()) {
+                    Text(
+                        text = detail.poolUrl,
+                        fontFamily = LocalDataFontFamily.current,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    DetailMetric("Worker", detail.poolWorker.ifBlank { "--" })
+                    DetailMetric("Status", detail.poolStatus.ifBlank { "--" })
+                    DetailMetric("Accepted", detail.acceptedShares?.toString() ?: "--")
+                    DetailMetric("Rejected", detail.rejectedShares?.toString() ?: "--")
+                }
             }
         }
     }

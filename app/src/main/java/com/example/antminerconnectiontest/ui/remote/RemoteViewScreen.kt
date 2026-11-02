@@ -31,15 +31,22 @@ import com.example.antminerconnectiontest.ui.components.MinerDetailContent
 import com.example.antminerconnectiontest.ui.components.toMinerDetailUi
 
 /**
- * The Remote View home for a user who started remote (and has no local
- * miner selected): the whole cloud fleet in one list, one entry per
- * machine (merged — see MinerMerge), tap a machine for its snapshot.
+ * The Remote View home content for a user who started remote (and has
+ * no local miner selected): the whole cloud fleet in one list, one
+ * entry per machine (merged — see MinerMerge), tap a machine for its
+ * snapshot.
  *
- * When cloud relay is not configured yet this screen hosts the existing
- * cloud setup fields (user name + test/save, same ViewModel calls the
- * Device tab uses) — choosing Remote never invents a second backend.
- * Local miners can be added from here at any time via "Add Local Miner";
- * starting remote is not a lock-in.
+ * Since v0.1.8 this is the HOME-tab content inside the main shell
+ * (Scaffold + bottom navigation) — it no longer carries a Scaffold of
+ * its own, so remote users keep the Home / Hardware / Pools / Logs /
+ * Device menus instead of being stranded here until a local miner is
+ * connected.
+ *
+ * When cloud relay is not configured yet this content hosts the
+ * existing cloud setup fields (user name + test/save, same ViewModel
+ * calls the Device tab uses) — choosing Remote never invents a second
+ * backend. Local miners can be added from here at any time via "Add
+ * Local Miner"; starting remote is not a lock-in.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,66 +62,62 @@ fun RemoteViewScreen(
     val isCloudConfigured = cloudConfig.userName.isNotBlank()
     val selected = uiState.selectedRemoteMiner
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(CyberCyan),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Cloud,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "REMOTE VIEW",
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Cloud farm — all your miners, anywhere",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::toggleThemeMode) {
-                        Icon(
-                            imageVector = if (uiState.themeMode == ThemeMode.LIGHT) Icons.Default.DarkMode else Icons.Default.LightMode,
-                            contentDescription = "Toggle Theme",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Header row. Before v0.1.8 this screen carried its own
+        // Scaffold + top bar because it was a standalone destination;
+        // now it is the Home-tab content of the main shell, which owns
+        // the chrome — the title and the theme toggle stay reachable
+        // here as a plain header row.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CyberCyan),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "REMOTE VIEW",
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Cloud farm — all your miners, anywhere",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(onClick = viewModel::toggleThemeMode) {
+                Icon(
+                    imageVector = if (uiState.themeMode == ThemeMode.LIGHT) Icons.Default.DarkMode else Icons.Default.LightMode,
+                    contentDescription = "Toggle Theme",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
             if (!isCloudConfigured) {
                 CloudSetupCard(viewModel = viewModel, uiState = uiState)
             } else {
@@ -254,7 +257,6 @@ fun RemoteViewScreen(
                     }
                 }
             }
-        }
     }
 }
 

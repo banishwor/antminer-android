@@ -26,7 +26,12 @@ import com.example.antminerconnectiontest.theme.*
 
 @Composable
 fun DeviceScreen(
-    profile: MinerProfile,
+    // Nullable since v0.1.8: a Remote View starter with no local miner
+    // connected still gets this tab (cloud & relay settings and App
+    // Updates matter most to them). The miner-specific sections below
+    // (saved-miner active state, hardware identity, network, firmware,
+    // disconnect) render only when a profile is active.
+    profile: MinerProfile?,
     savedProfiles: List<MinerProfile>,
     data: MinerDashboardData?,
     themeMode: ThemeMode,
@@ -432,7 +437,7 @@ fun DeviceScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Saved Miners (${savedProfiles.size.coerceAtLeast(1)})",
+                        text = "Saved Miners (${if (profile == null) savedProfiles.size else savedProfiles.size.coerceAtLeast(1)})",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
@@ -452,9 +457,16 @@ fun DeviceScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
-                val profilesToShow = if (savedProfiles.isEmpty()) listOf(profile) else savedProfiles
+                val profilesToShow = if (savedProfiles.isEmpty()) listOfNotNull(profile) else savedProfiles
+                if (profilesToShow.isEmpty()) {
+                    Text(
+                        text = "No local miners saved on this phone yet. When you are on a miner's Wi-Fi, add one from Home — it will appear here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 profilesToShow.forEach { item ->
-                    val isActive = item.id == profile.id
+                    val isActive = item.id == profile?.id
                     Surface(
                         color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(10.dp),
@@ -622,6 +634,11 @@ fun DeviceScreen(
             )
         }
 
+        // Miner-specific sections — only when a local miner is active.
+        // A remote-only user has no miner identity to show here; the
+        // theme, cloud/relay and update sections above are their
+        // Device tab.
+        if (profile != null) {
         // Miner Hardware Identity Card
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -722,6 +739,7 @@ fun DeviceScreen(
             Icon(Icons.Default.PowerSettingsNew, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("DISCONNECT FROM MINER", fontWeight = FontWeight.Bold)
+        }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
