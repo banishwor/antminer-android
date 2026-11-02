@@ -99,7 +99,7 @@ data class AppUiState(
     val scannerUsernameInput: String = "root",
     val scannerPasswordInput: String = "root",
     val isScannerPasswordVisible: Boolean = false,
-    val themeMode: ThemeMode = ThemeMode.DARK,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val selectedLogsTab: LogsTab = LogsTab.CURRENT,
     val currentLogText: String? = null,
     val historyLogText: String? = null,
@@ -209,13 +209,18 @@ class DashboardViewModel(
 
     fun setThemeMode(mode: ThemeMode) {
         _uiState.update { it.copy(themeMode = mode) }
+        try {
+            storageManager?.saveThemeMode(mode.name)
+        } catch (_: Throwable) {}
     }
 
     fun toggleThemeMode() {
+        // Cycle through all three modes so the header toggle can also
+        // return to "follow system" without opening Settings.
         val next = when (_uiState.value.themeMode) {
-            ThemeMode.DARK -> ThemeMode.LIGHT
-            ThemeMode.LIGHT -> ThemeMode.DARK
             ThemeMode.SYSTEM -> ThemeMode.DARK
+            ThemeMode.DARK -> ThemeMode.LIGHT
+            ThemeMode.LIGHT -> ThemeMode.SYSTEM
         }
         setThemeMode(next)
     }
@@ -258,10 +263,14 @@ class DashboardViewModel(
             val savedStartChoice = storageManager.loadStartChoice()?.let { stored ->
                 StartChoice.values().firstOrNull { it.name == stored }
             }
+            val savedThemeMode = storageManager.loadThemeMode()?.let { stored ->
+                ThemeMode.values().firstOrNull { it.name == stored }
+            } ?: ThemeMode.SYSTEM
             _uiState.update {
                 it.copy(
                     cloudConfig = savedCloudConfig,
                     startChoice = savedStartChoice,
+                    themeMode = savedThemeMode,
                     savedProfiles = profileManager.savedProfiles.value
                 )
             }

@@ -33,6 +33,7 @@ class MinerStorageManager(context: Context) {
         private const val KEY_PROFILES = "key_miner_profiles"
         private const val KEY_ACTIVE_ID = "key_active_profile_id"
         private const val KEY_START_CHOICE = "key_start_choice"
+        private const val KEY_THEME_MODE = "key_theme_mode"
 
         /** Marks an encrypted payload: prefix + Base64(IV || ciphertext). */
         private const val ENCRYPTED_PREFIX = "enc_v1:"
@@ -182,6 +183,18 @@ class MinerStorageManager(context: Context) {
         } else {
             prefs.edit().remove(KEY_START_CHOICE).apply()
         }
+    }
+
+    /**
+     * The user's theme choice ("DARK" / "LIGHT" / "SYSTEM"), or null when
+     * they have never picked one — the app then follows the system theme.
+     */
+    fun loadThemeMode(): String? {
+        return prefs.getString(KEY_THEME_MODE, null)
+    }
+
+    fun saveThemeMode(modeName: String) {
+        prefs.edit().putString(KEY_THEME_MODE, modeName).apply()
     }
 
     fun getLastActiveProfileId(): String? {
