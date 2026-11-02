@@ -50,13 +50,19 @@ object RelayUpload {
      * ever push a UUID-keyed row again), canonicalises ids to their
      * trimmed form, and collapses in-batch duplicates by normalised
      * identity (last one wins — it carries the freshest reading).
+     *
+     * The sheet `nickname` field is rewritten to the worker identity
+     * too (v0.1.7): nicknames are phone-only and never upload, and the
+     * identity string is exactly what older app versions parse back out
+     * of the nickname field to recover a row's worker name, so legacy
+     * readers keep working unchanged.
      */
     fun prepareSnapshots(snapshots: List<RemoteMinerSnapshot>): List<RemoteMinerSnapshot> {
         val byIdentity = LinkedHashMap<String, RemoteMinerSnapshot>()
         for (snapshot in snapshots) {
             val id = sheetIdForWorkerName(snapshot.id) ?: continue
             if (MinerMerge.isDeviceId(id)) continue
-            byIdentity[MinerMerge.normalizeWorkerName(id)] = snapshot.copy(id = id)
+            byIdentity[MinerMerge.normalizeWorkerName(id)] = snapshot.copy(id = id, nickname = id)
         }
         return byIdentity.values.toList()
     }

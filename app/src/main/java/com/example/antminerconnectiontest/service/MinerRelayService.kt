@@ -140,7 +140,10 @@ class MinerRelayService : Service() {
                                                     RemoteMinerSnapshot(
                                                         user = config.userName.trim(),
                                                         id = sheetId,
-                                                        nickname = profile.effectiveName,
+                                                        // Phone-only nicknames never
+                                                        // upload (v0.1.7): the nickname
+                                                        // field carries the identity.
+                                                        nickname = sheetId,
                                                         ip = profile.host,
                                                         hashrate5s = rate5s,
                                                         avgHashrate = avgRate,

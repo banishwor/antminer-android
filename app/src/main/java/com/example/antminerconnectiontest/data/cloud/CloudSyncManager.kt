@@ -46,7 +46,11 @@ class CloudSyncManager(
             val minerMaps = miners.map { miner ->
                 val map = linkedMapOf<String, Any>(
                     "id" to miner.id,
-                    "nickname" to miner.nickname,
+                    // Nicknames are phone-only (v0.1.7) and never upload:
+                    // the sheet's nickname field carries the worker
+                    // identity (the snapshot id), which is also what
+                    // older app versions parse to recover the worker name.
+                    "nickname" to miner.id,
                     "ip" to miner.ip,
                     "hashrate5s" to miner.hashrate5s,
                     "avgHashrate" to miner.avgHashrate,
