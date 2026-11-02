@@ -184,14 +184,17 @@ class DashboardViewModel(
      */
     val mergedMiners: StateFlow<List<MergedMinerEntry>> = combine(
         profileManager.savedProfiles,
-        _uiState.map { it.remoteMiners }.distinctUntilChanged(),
+        _uiState.map { it.remoteMiners to it.selectedRemoteMiner }.distinctUntilChanged(),
         multiMinerPoller.minerHashrates,
         repository.activeProfile,
         repository.dashboardData
-    ) { profiles, remoteSnapshots, raceRates, active, data ->
+    ) { profiles, remoteState, raceRates, active, data ->
+        val (remoteSnapshots, selectedSnapshot) = remoteState
         MinerMerge.merge(
             profiles = profiles,
-            snapshots = remoteSnapshots,
+            // The selected snapshot takes part in the merge even if a sync
+            // cycle has not (or no longer) listed it — MinerMerge dedupes.
+            snapshots = remoteSnapshots + listOfNotNull(selectedSnapshot),
             localData = MinerMerge.LocalData(
                 activeProfileId = active?.id,
                 activeDataProfileId = data?.profileId,

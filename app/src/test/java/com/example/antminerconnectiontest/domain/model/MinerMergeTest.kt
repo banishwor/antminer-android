@@ -77,8 +77,10 @@ class MinerMergeTest {
 
     @Test
     fun blankWorkerNamesNeverMatch() {
-        val local = profile(id = "p1", workerName = "")
-        val remote = snapshot(id = "", nickname = "")
+        // Different IPs too, so the IP fallback cannot legitimately pair
+        // them either: with no worker identity anywhere, no merge.
+        val local = profile(id = "p1", workerName = "", host = "192.168.1.10")
+        val remote = snapshot(id = "", nickname = "", ip = "192.168.1.99")
 
         val entries = MinerMerge.merge(listOf(local), listOf(remote))
 
