@@ -115,7 +115,7 @@ fun AntminerConnectionTestTheme(
     val colorScheme = if (isDark) AntminerDarkColorScheme else AntminerLightColorScheme
     val typography = if (isDark) DarkTypography else LightTypography
     val shapes = if (isDark) DarkShapes else LightShapes
-    val dataFont = if (isDark) FontFamily.Monospace else FontFamily.Default
+    val dataFont: FontFamily = if (isDark) FontFamily.Monospace else FontFamily.Default
 
     CompositionLocalProvider(LocalDataFontFamily provides dataFont) {
         MaterialTheme(
