@@ -40,7 +40,10 @@ import com.example.antminerconnectiontest.ui.SetupFormState
 @Composable
 fun SetupScreen(
     viewModel: DashboardViewModel,
-    uiState: AppUiState
+    uiState: AppUiState,
+    /** Non-null when a Remote View user opened setup to add a local miner:
+     *  shows a way back to Remote View. Null in the normal first-run flow. */
+    onExitSetup: (() -> Unit)? = null
 ) {
     val form = uiState.setupForm
     val scanner = uiState.scannerState
@@ -50,12 +53,10 @@ fun SetupScreen(
     var batchPassword by remember { mutableStateOf("root") }
     var isBatchPasswordVisible by remember { mutableStateOf(false) }
 
-    // Automatically trigger subnet scan if connected to Wi-Fi and not started
-    LaunchedEffect(isWifi) {
-        if (isWifi && !scanner.isScanning && scanner.scannedCount == 0) {
-            viewModel.startNetworkScan()
-        }
-    }
+    // NO auto-scan on open: a subnet scan only starts from an explicit
+    // user action — the first-open "Start scan" choice, or the Start Scan
+    // button below. (This screen used to fire a scan from a LaunchedEffect
+    // the moment it composed on Wi-Fi.)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -117,6 +118,19 @@ fun SetupScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Back to Remote View (only for remote starters adding a local miner)
+            if (onExitSetup != null) {
+                TextButton(
+                    onClick = onExitSetup,
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Back to Remote View", fontWeight = FontWeight.Bold)
+                }
+            }
+
             // Mobile Network Notice Banner (if not on Wi-Fi)
             if (!isWifi) {
                 Card(
@@ -188,13 +202,13 @@ fun SetupScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = if (!isWifi) "Scanner Standby (Wi-Fi Required)" else if (scanner.isScanning) "Scanning Subnet for Miners..." else "Subnet Scan Finished",
+                                    text = if (!isWifi) "Scanner Standby (Wi-Fi Required)" else if (scanner.isScanning) "Scanning Subnet for Miners..." else if (scanner.scannedCount == 0) "Scanner Idle" else "Subnet Scan Finished",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (!isWifi) "Connect to Wi-Fi to scan local miners" else "${scanner.scannedCount}/${scanner.totalCount.coerceAtLeast(254)} IPs scanned • ${scanner.discoveredMiners.size} Antminers found",
+                                    text = if (!isWifi) "Connect to Wi-Fi to scan local miners" else if (scanner.scannedCount == 0 && !scanner.isScanning) "Tap Start Scan to search this network" else "${scanner.scannedCount}/${scanner.totalCount.coerceAtLeast(254)} IPs scanned • ${scanner.discoveredMiners.size} Antminers found",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -221,7 +235,7 @@ fun SetupScreen(
                             ) {
                                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Rescan", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(if (scanner.scannedCount == 0) "Start Scan" else "Rescan", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -407,7 +421,7 @@ fun SetupScreen(
                                 Icon(Icons.Default.SearchOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = if (!isWifi) "Connect to Wi-Fi to scan local miners" else "No miners auto-detected on this subnet.",
+                                    text = if (!isWifi) "Connect to Wi-Fi to scan local miners" else if (scanner.scannedCount == 0) "Nothing scanned yet — tap Start Scan to search this Wi-Fi for Antminers." else "No miners detected on this subnet.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

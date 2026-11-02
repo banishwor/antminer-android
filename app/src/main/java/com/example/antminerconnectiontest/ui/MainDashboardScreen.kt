@@ -21,13 +21,16 @@ import com.example.antminerconnectiontest.ui.hardware.HardwareScreen
 import com.example.antminerconnectiontest.ui.home.HomeScreen
 import com.example.antminerconnectiontest.ui.logs.LogsScreen
 import com.example.antminerconnectiontest.ui.pools.PoolsScreen
+import com.example.antminerconnectiontest.ui.remote.RemoteViewScreen
 import com.example.antminerconnectiontest.ui.setup.SetupScreen
+import com.example.antminerconnectiontest.ui.start.StartChoiceScreen
 
 @Composable
 fun MainDashboardScreen(
     viewModel: DashboardViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val mergedMiners by viewModel.mergedMiners.collectAsState()
     val activeProfile = uiState.activeProfile
 
     // Refresh on return to the foreground when the dashboard is empty,
@@ -37,9 +40,13 @@ fun MainDashboardScreen(
     }
 
     AntminerConnectionTestTheme(themeMode = uiState.themeMode) {
-        if (activeProfile == null) {
-            SetupScreen(viewModel = viewModel, uiState = uiState)
-        } else {
+        when {
+            // Fresh install: no local miners saved and no start choice made
+            // yet — ask once. Nothing scans or loads locally before this.
+            uiState.savedProfiles.isEmpty() && uiState.startChoice == null -> {
+                StartChoiceScreen(viewModel = viewModel, uiState = uiState)
+            }
+            activeProfile != null -> {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
@@ -234,6 +241,31 @@ fun MainDashboardScreen(
                         )
                     }
                 }
+            }
+            }
+            // Remote starter with no local miner selected: the cloud farm
+            // view. (Also where a remote user lands after disconnecting a
+            // local miner — their fleet view, not a setup screen.)
+            uiState.startChoice == StartChoice.REMOTE && !uiState.isLocalSetupOpen -> {
+                RemoteViewScreen(
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    mergedMiners = mergedMiners
+                )
+            }
+            // Local setup: scan/manual add flow. Reached by Scan starters,
+            // by "Add New Miner", and by remote starters adding a local
+            // miner on site (who get a way back to Remote View).
+            else -> {
+                SetupScreen(
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    onExitSetup = if (uiState.startChoice == StartChoice.REMOTE) {
+                        viewModel::closeLocalSetup
+                    } else {
+                        null
+                    }
+                )
             }
         }
     }
