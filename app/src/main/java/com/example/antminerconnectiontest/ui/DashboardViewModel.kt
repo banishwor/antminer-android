@@ -49,18 +49,6 @@ enum class SetupTab {
     SCANNER
 }
 
-/**
- * How the user chose to start on first open. Persisted (see
- * MinerStorageManager.loadStartChoice) so it is asked exactly once.
- * Neither choice locks anything in: Remote starters can add local miners
- * when they are on site, and Scan starters can use Remote View any time
- * from the dashboard.
- */
-enum class StartChoice {
-    REMOTE,
-    SCAN
-}
-
 data class SetupFormState(
     val ip: String = "192.168.1.2",
     val username: String = "root",
@@ -108,10 +96,16 @@ data class AppUiState(
     val lastLogUpdated: Long? = null,
     val dailyAnalysisState: DailyAnalysisUiState = DailyAnalysisUiState(),
     val cloudConfig: CloudSyncConfig = CloudSyncConfig(),
-    /** First-open start choice; null = not chosen yet (fresh install). */
-    val startChoice: StartChoice? = null,
-    /** Remote starter is on the setup flow to add a local miner on site. */
+    /** The add-miner setup flow is open (entered only by an explicit tap). */
     val isLocalSetupOpen: Boolean = false,
+    /**
+     * Known machines on this Wi-Fi that rejected every credential the
+     * phone has (v0.1.9 auto-connect): shown on Home as tappable cards
+     * that open the credential entry prefilled with the machine's IP.
+     * Entering the password once saves a profile, and auto-connect uses
+     * it from then on.
+     */
+    val autoConnectNeedsPassword: List<NeedsPasswordMachine> = emptyList(),
     val remoteMiners: List<RemoteMinerSnapshot> = emptyList(),
     val selectedRemoteMiner: RemoteMinerSnapshot? = null,
     /**
@@ -266,6 +260,10 @@ class DashboardViewModel(
 
     private var scanJob: Job? = null
     private var cloudSyncJob: Job? = null
+    private var autoConnectJob: Job? = null
+    private var lastAutoConnectMs: Long = 0L
+    /** Candidate-set fingerprint of the last auto-connect pass — a changed fleet forces a fresh pass inside the throttle window. */
+    private var lastAutoConnectFingerprint: String = ""
     /** Sheet row ids already sent a legacy-duplicate delete request for this session. */
     private val legacyHealAttemptedIds = mutableSetOf<String>()
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
@@ -297,20 +295,16 @@ class DashboardViewModel(
         // Load persistent cloud config
         if (storageManager != null) {
             val savedCloudConfig = storageManager.loadCloudConfig()
-            // Load the start choice and the saved profiles synchronously so
-            // the very first frame routes correctly: a returning user with
-            // miners must never flash the first-open choice screen while
-            // the async collectors are still starting.
-            val savedStartChoice = storageManager.loadStartChoice()?.let { stored ->
-                StartChoice.values().firstOrNull { it.name == stored }
-            }
+            // Load the saved profiles synchronously so the very first
+            // frame renders the real fleet. (The start choice older
+            // versions persisted is ignored since v0.1.9 — there is one
+            // shell for everyone, so nothing routes on it anymore.)
             val savedThemeMode = storageManager.loadThemeMode()?.let { stored ->
                 ThemeMode.values().firstOrNull { it.name == stored }
             } ?: ThemeMode.SYSTEM
             _uiState.update {
                 it.copy(
                     cloudConfig = savedCloudConfig,
-                    startChoice = savedStartChoice,
                     themeMode = savedThemeMode,
                     savedProfiles = profileManager.savedProfiles.value,
                     nicknameOverrides = storageManager.loadPhoneNicknames()
@@ -413,6 +407,15 @@ class DashboardViewModel(
         // Immediate cloud sync on startup (< 100ms)
         syncCloudNow()
 
+        // Cold start already on Wi-Fi: auto-connect the known miners
+        // (v0.1.9) — the fleet fetch lands first (syncCloudNow above),
+        // then the pass probes saved profiles + fleet rows. The sync
+        // cycle re-triggers passes as the fleet arrives.
+        viewModelScope.launch {
+            delay(1200L)
+            runAutoConnect(force = true)
+        }
+
         // Auto-refresh when Wi-Fi connects or disconnects. Stored in a field
         // (it used to be anonymous) so onCleared() can unregister it — the
         // leaked registration kept every dead ViewModel generation receiving
@@ -428,6 +431,9 @@ class DashboardViewModel(
                         delay(600L) // Wait 600ms for Wi-Fi IP assignment
                         repository.refreshDashboardData()
                         syncCloudNow()
+                        // Joined a Wi-Fi network: try the known miners
+                        // on it right away (forced pass, v0.1.9).
+                        runAutoConnect(force = true)
                     }
                 }
 
@@ -543,7 +549,35 @@ class DashboardViewModel(
     }
 
     private suspend fun performCloudSyncCycle(cfg: CloudSyncConfig) {
-        // 1. Upload local miners — only when the Relay switch is ON and
+        // 1. Fetch permitted remote miners FIRST. Viewing is NOT gated
+        //    by the Relay switch — it happens whenever a user name is
+        //    set. The fetched fleet also feeds two decisions below: the
+        //    cross-user upload guard (a machine whose sheet row belongs
+        //    to another relay user must not be re-uploaded under this
+        //    user's name) and auto-connect's known-miner candidate set.
+        val fetchRes = cloudSyncManager.fetchRemoteMiners(cfg.webhookUrl, cfg.userName)
+        fetchRes.onSuccess { response ->
+            _uiState.update {
+                it.copy(
+                    remoteMiners = response.miners,
+                    isCloudConnected = true,
+                    lastCloudSyncTimestamp = System.currentTimeMillis()
+                )
+            }
+        }.onFailure { err ->
+            _uiState.update {
+                it.copy(isCloudConnected = false)
+            }
+        }
+        val fetched = fetchRes.getOrNull()
+
+        // 2. Auto-connect known miners on this Wi-Fi (v0.1.9): with the
+        //    fresh fleet in state, try the known IPs of saved profiles
+        //    and fleet machines so on-site machines flip LIVE without
+        //    any manual step. Throttled inside runAutoConnect.
+        runAutoConnect()
+
+        // 3. Upload local miners — only when the Relay switch is ON and
         //    connected to Wi-Fi.
         if (cfg.isSyncEnabled && isWifiConnected()) {
             val localProfiles = profileManager.savedProfiles.value
@@ -620,34 +654,28 @@ class DashboardViewModel(
             }
 
             if (localSnapshots.isNotEmpty()) {
-                cloudSyncManager.uploadLocalMiners(cfg.webhookUrl, cfg.userName, localSnapshots)
-            }
-        }
-
-        // 2. Fetch permitted remote miners. Viewing is NOT gated by the
-        //    Relay switch — it happens whenever a user name is set.
-        val fetchRes = cloudSyncManager.fetchRemoteMiners(cfg.webhookUrl, cfg.userName)
-        fetchRes.onSuccess { response ->
-            _uiState.update {
-                it.copy(
-                    remoteMiners = response.miners,
-                    isCloudConnected = true,
-                    lastCloudSyncTimestamp = System.currentTimeMillis()
+                // Cross-user guard: a machine auto-connected locally
+                // whose sheet row belongs to another relay user is fully
+                // usable here but must NOT be uploaded under this user's
+                // name — that would fork its sheet row. Machines absent
+                // from the fleet (brand-new) and this user's own pass.
+                val uploadable = RelayUpload.filterUploadable(
+                    localSnapshots,
+                    cfg.userName,
+                    fetched?.miners ?: _uiState.value.remoteMiners
                 )
-            }
-        }.onFailure { err ->
-            _uiState.update {
-                it.copy(isCloudConnected = false)
+                if (uploadable.isNotEmpty()) {
+                    cloudSyncManager.uploadLocalMiners(cfg.webhookUrl, cfg.userName, uploadable)
+                }
             }
         }
 
-        // 3. Heal legacy duplicates, best-effort: rows this user's
+        // 4. Heal legacy duplicates, best-effort: rows this user's
         //    machines accumulated under per-device UUID ids before
         //    uploads carried the worker identity. Selection is limited
         //    to this user's own rows (see RelayUpload), each id is
         //    requested at most once per session, and endpoint versions
         //    without delete support simply ignore the request.
-        val fetched = fetchRes.getOrNull()
         if (fetched != null) {
             val canonicalIds = profileManager.savedProfiles.value
                 .mapNotNull { RelayUpload.sheetIdFor(it) }
@@ -1075,39 +1103,207 @@ class DashboardViewModel(
     }
 
     fun selectSetupTab(tab: SetupTab) {
-        // Deliberately NO auto-scan here: a scan only ever starts from an
-        // explicit user action (the Start Scan choice, or the scan button
-        // on the setup screen) — never as a side effect of navigation.
+        // Deliberately NO auto-scan here: a subnet scan only ever starts
+        // from an explicit user action (the scan button on the setup
+        // screen) — never as a side effect of navigation. (Auto-connect
+        // of KNOWN miners is a different mechanism: no scan, see
+        // runAutoConnect.)
         _uiState.update { it.copy(setupTab = tab) }
     }
 
-    /**
-     * First-open choice: "Start as Remote View". Goes to the remote/cloud
-     * farm view without touching the local network — no scan is started.
-     * If cloud relay is not configured yet, the remote screen itself hosts
-     * the existing cloud setup fields. Local miners can still be added
-     * later from that screen when the user is on site.
-     */
-    fun chooseRemoteStart() {
-        storageManager?.saveStartChoice(StartChoice.REMOTE.name)
-        _uiState.update { it.copy(startChoice = StartChoice.REMOTE) }
-        syncCloudNow()
-    }
-
-    /**
-     * First-open choice: "Start scan". Goes to the setup flow and starts
-     * the local subnet scan immediately — this tap IS the explicit user
-     * action that authorises the scan.
-     */
-    fun chooseScanStart() {
-        storageManager?.saveStartChoice(StartChoice.SCAN.name)
-        _uiState.update { it.copy(startChoice = StartChoice.SCAN) }
-        startNetworkScan()
-    }
-
-    /** Remote starter, now on site, wants to add a local miner. */
+    /** Opens the add-miner setup flow (scan / manual connect) inside the one shell. */
     fun openLocalSetup() {
         _uiState.update { it.copy(isLocalSetupOpen = true) }
+    }
+
+    // ── Auto-connect of known miners (v0.1.9) ─────────────────────────
+    //
+    // When the phone is on a Wi-Fi network, try the known IPs of the
+    // machines this phone already knows — saved profiles and cloud
+    // fleet rows — and turn the ones that answer into normal local
+    // miners. No subnet scan, no unknown machines: the candidate set,
+    // the identity verification and the failure classification are the
+    // pure rules in AutoConnect, shared with the background relay
+    // service so both paths behave identically.
+    //
+    // Triggers: Wi-Fi onAvailable (forced), app cold start on Wi-Fi
+    // (forced, from init), and every cloud sync cycle (throttled — a
+    // changed candidate set forces a pass inside the window).
+
+    /** Minimum spacing between untriggered auto-connect passes. */
+    private fun runAutoConnect(force: Boolean = false) {
+        if (!isWifiConnected()) return
+        if (autoConnectJob?.isActive == true) return
+        val candidates = AutoConnect.buildCandidates(
+            profileManager.savedProfiles.value,
+            _uiState.value.remoteMiners
+        )
+        if (candidates.isEmpty()) return
+        val fingerprint = candidates.joinToString("|") { "${it.identity}@${it.probeIps.joinToString(",")}" }
+        val now = System.currentTimeMillis()
+        if (!force && fingerprint == lastAutoConnectFingerprint && now - lastAutoConnectMs < 45_000L) return
+        lastAutoConnectFingerprint = fingerprint
+        lastAutoConnectMs = now
+        autoConnectJob = viewModelScope.launch(Dispatchers.IO) {
+            autoConnectPass(candidates)
+        }
+    }
+
+    private suspend fun autoConnectPass(candidates: List<AutoConnectCandidate>) {
+        val knownIdentities = candidates.mapNotNull {
+            it.identity.takeIf { id -> id.isNotBlank() }
+        }.toSet()
+        // saveOrUpdateProfile moves the profile manager's active pointer
+        // to the merged profile; remember the user's machine so the
+        // pass never steals it (a NEW active miner is only adopted when
+        // the user had none — see below).
+        val previousActiveId = profileManager.getActiveProfile()?.id
+        val needsPassword = mutableListOf<NeedsPasswordMachine>()
+        var savedAny = false
+
+        for (candidate in candidates) {
+            for (ip in candidate.probeIps) {
+                val username = candidate.savedProfile?.username?.ifBlank { AutoConnect.DEFAULT_USERNAME }
+                    ?: AutoConnect.DEFAULT_USERNAME
+                val password = candidate.savedProfile?.password?.ifBlank { AutoConnect.DEFAULT_PASSWORD }
+                    ?: AutoConnect.DEFAULT_PASSWORD
+                val result = detector.verifyMinerWithCredentials(ip, username, password)
+                if (result.isConfirmed) {
+                    when (AutoConnect.classify(candidate, result.workerName, knownIdentities)) {
+                        ProbeClass.MATCH -> {
+                            adoptAutoConnected(candidate, ip, username, result)
+                            savedAny = true
+                        }
+                        ProbeClass.DIFFERENT_KNOWN_MACHINE -> {
+                            // A different known fleet machine lives at
+                            // this IP now (DHCP swap): claim THAT
+                            // machine at this address instead.
+                            val resolvedNorm = MinerMerge.normalizeWorkerName(result.workerName)
+                            val other = candidates.firstOrNull { it.identity == resolvedNorm }
+                            if (other != null) {
+                                adoptAutoConnected(other, ip, username, result)
+                                savedAny = true
+                            }
+                        }
+                        // Unknown or unverifiable machine at a known IP:
+                        // the known-only rule — never added. Its fleet
+                        // row (if any) keeps showing the snapshot.
+                        ProbeClass.UNKNOWN_MACHINE, ProbeClass.UNVERIFIED -> Unit
+                        ProbeClass.NEEDS_PASSWORD, ProbeClass.UNREACHABLE -> Unit
+                    }
+                    break // Answered (one way or another) — next candidate.
+                }
+
+                // Not confirmed: distinguish "miner there, password
+                // wrong" from "nothing there" via the unauthenticated
+                // signature probe.
+                val signature = detector.detectSignature(ip)
+                val failure = AutoConnect.classifyFailure(
+                    reachable = signature != com.example.antminerconnectiontest.data.scanner.DiscoveryStatus.OFFLINE,
+                    isAntminer = signature == com.example.antminerconnectiontest.data.scanner.DiscoveryStatus.CONFIRMED_ANTMINER ||
+                        signature == com.example.antminerconnectiontest.data.scanner.DiscoveryStatus.POSSIBLE_ANTMINER_AUTH_REQUIRED
+                )
+                if (failure == ProbeClass.NEEDS_PASSWORD) {
+                    needsPassword += NeedsPasswordMachine(
+                        identity = candidate.identity,
+                        displayName = candidate.snapshot?.let {
+                            PhoneNicknames.displayName(_uiState.value.nicknameOverrides, null, it)
+                        } ?: candidate.savedProfile?.effectiveName ?: ip,
+                        ip = ip,
+                        ownerUser = candidate.sheetOwner
+                    )
+                    break // Miner is at this IP; trying the alternate address is pointless.
+                }
+                if (failure == ProbeClass.UNKNOWN_MACHINE) break
+                // UNREACHABLE: fall through to the alternate IP, if any.
+            }
+        }
+
+        _uiState.update { it.copy(autoConnectNeedsPassword = needsPassword.distinctBy { it.key }) }
+
+        if (previousActiveId != null) {
+            // Restore the user's active pointer (see above).
+            if (profileManager.getActiveProfile()?.id != previousActiveId) {
+                profileManager.selectProfile(previousActiveId)
+            }
+        } else if (savedAny && _uiState.value.activeProfile == null) {
+            // The user had no local miner (e.g. a phone that only ever
+            // viewed the fleet): the first auto-connected machine
+            // becomes the dashboard's miner, like any manual connect.
+            profileManager.getActiveProfile()?.let { profile ->
+                _uiState.update { it.copy(activeProfile = profile) }
+                repository.setActiveProfile(profile)
+                viewModelScope.launch { repository.refreshDashboardData() }
+            }
+        }
+        if (savedAny) {
+            // Fresh profiles feed the race poller and the next upload
+            // cycle immediately instead of at the next 20 s tick.
+            syncCloudNow()
+        }
+    }
+
+    /**
+     * Saves the machine an auto-connect probe verified: an existing
+     * profile is updated in place (host, learned worker identity, the
+     * credentials that worked); a fleet-only machine gets a new profile
+     * carrying the verified identity and those credentials (encrypted at
+     * rest by MinerStorageManager, never uploaded anywhere).
+     */
+    private fun adoptAutoConnected(
+        candidate: AutoConnectCandidate,
+        ip: String,
+        username: String,
+        result: com.example.antminerconnectiontest.data.scanner.MinerVerificationResult
+    ) {
+        val resolvedRaw = result.workerName?.trim().orEmpty()
+        val existing = candidate.savedProfile
+        val profile = if (existing != null) {
+            existing.copy(
+                host = ip,
+                workerName = resolvedRaw.ifBlank { existing.workerName },
+                username = username,
+                password = result.effectivePassword,
+                macAddress = result.macAddress?.ifBlank { existing.macAddress } ?: existing.macAddress,
+                displayName = result.modelName ?: existing.displayName,
+                cachedModel = result.modelName ?: existing.cachedModel,
+                lastConnected = System.currentTimeMillis()
+            )
+        } else {
+            MinerProfile(
+                workerName = resolvedRaw,
+                macAddress = result.macAddress.orEmpty(),
+                displayName = result.modelName
+                    ?: candidate.snapshot?.model?.ifBlank { null }
+                    ?: "Antminer",
+                host = ip,
+                username = username,
+                password = result.effectivePassword,
+                cachedModel = result.modelName ?: candidate.snapshot?.model?.ifBlank { null }
+            )
+        }
+        profileManager.saveOrUpdateProfile(profile)
+    }
+
+    /**
+     * A needs-password card tap: open the existing manual credential
+     * entry with the machine's IP prefilled. Connecting there saves the
+     * profile with the entered password, and auto-connect uses it from
+     * then on.
+     */
+    fun openNeedsPasswordEntry(machine: NeedsPasswordMachine) {
+        _uiState.update {
+            it.copy(
+                setupForm = it.setupForm.copy(
+                    ip = machine.ip,
+                    username = AutoConnect.DEFAULT_USERNAME,
+                    password = "",
+                    errorMessage = null
+                ),
+                isLocalSetupOpen = true
+            )
+        }
+        selectSetupTab(SetupTab.MANUAL)
     }
 
     fun closeLocalSetup() {
@@ -1641,6 +1837,7 @@ class DashboardViewModel(
         _uiState.update {
             it.copy(
                 selectedTab = DashboardTab.HOME,
+                isLocalSetupOpen = false,
                 setupForm = SetupFormState(),
                 currentLogText = null,
                 historyLogText = null,

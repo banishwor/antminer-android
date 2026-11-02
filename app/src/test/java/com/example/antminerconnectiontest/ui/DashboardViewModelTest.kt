@@ -1,6 +1,7 @@
 package com.example.antminerconnectiontest.ui
 
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.NeedsPasswordMachine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -242,25 +243,41 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun startChoice_defaultsToNull_untilUserChooses() {
+    fun noStartChoice_freshStateIsTheShell_noSetupOpen() {
+        // v0.1.9: there is no first-open choice anymore — a fresh
+        // ViewModel is already "in the shell": Home tab, setup closed.
         val viewModel = DashboardViewModel()
-        assertNull(viewModel.uiState.value.startChoice)
-
-        viewModel.chooseRemoteStart()
-        assertEquals(StartChoice.REMOTE, viewModel.uiState.value.startChoice)
+        val state = viewModel.uiState.value
+        assertEquals(DashboardTab.HOME, state.selectedTab)
+        assertFalse(state.isLocalSetupOpen)
+        assertTrue(state.autoConnectNeedsPassword.isEmpty())
     }
 
     @Test
-    fun chooseScanStart_setsChoiceAndAttemptsScan() {
+    fun localSetup_opensAndClosesOnlyByExplicitAction() {
         val viewModel = DashboardViewModel()
-        viewModel.chooseScanStart()
+        viewModel.openLocalSetup()
+        assertTrue(viewModel.uiState.value.isLocalSetupOpen)
+        viewModel.closeLocalSetup()
+        assertFalse(viewModel.uiState.value.isLocalSetupOpen)
+    }
 
-        assertEquals(StartChoice.SCAN, viewModel.uiState.value.startChoice)
-        // The explicit tap DOES start the scan flow; in the test
-        // environment there is no Wi-Fi, so it lands on the Wi-Fi notice
-        // instead of scanning — which proves the attempt happened.
-        assertTrue(viewModel.uiState.value.scannerState.activeIp.contains("Wi-Fi"))
-        assertFalse(viewModel.uiState.value.scannerState.isScanning)
+    @Test
+    fun needsPasswordEntry_prefillsIpAndOpensManualSetup() {
+        val viewModel = DashboardViewModel()
+        viewModel.openNeedsPasswordEntry(
+            NeedsPasswordMachine(
+                identity = "tompokchao.001",
+                displayName = "tompokchao.001",
+                ip = "192.168.1.20",
+                ownerUser = "Tompokchao"
+            )
+        )
+        val state = viewModel.uiState.value
+        assertTrue(state.isLocalSetupOpen)
+        assertEquals(SetupTab.MANUAL, state.setupTab)
+        assertEquals("192.168.1.20", state.setupForm.ip)
+        assertEquals("", state.setupForm.password)
     }
 
     @Test
