@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.alerts.MinerAlert
+import com.example.antminerconnectiontest.domain.model.AddMinerCardVisibility
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.FleetSorting
 import com.example.antminerconnectiontest.domain.model.HeroSummary
@@ -173,6 +174,15 @@ fun HomeScreen(
     val heroSnapshot = effectiveRemote
         ?: defaultRow?.entry?.remoteSnapshot?.takeIf { profile == null && selectedRemoteMiner == null }
 
+    // The "Add a miner" card rule (v0.2.3, user-approved): it shows
+    // ONLY when there is no miner at all — no saved local profiles
+    // AND no merged fleet entries (local or cloud). See
+    // AddMinerCardVisibility for the pure, tested rule.
+    val showAddMinerCard = AddMinerCardVisibility.shouldShow(
+        savedProfileCount = savedProfiles.size,
+        mergedFleetCount = mergedMiners.size
+    )
+
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -209,7 +219,8 @@ fun HomeScreen(
                 // Setup CONTENT for a fresh install — inside the same
                 // Home, never a separate first-run flow (v0.1.9): the
                 // cloud setup card while no relay user name is set, and
-                // the Add Miner card while no local miner exists.
+                // the Add Miner card while there is no miner at all
+                // (v0.2.3 rule — see showAddMinerCard).
                 if (cloudConfig.userName.isBlank()) {
                     HomeCloudSetupCard(
                         cloudConfig = cloudConfig,
@@ -220,7 +231,7 @@ fun HomeScreen(
                         onSaveCloudConfig = onSaveCloudConfig
                     )
                 }
-                if (savedProfiles.isEmpty()) {
+                if (showAddMinerCard) {
                     HomeAddMinerCard(onOpenSetup = onOpenSetup)
                 }
             }
@@ -315,8 +326,13 @@ fun HomeScreen(
                     )
                 }
 
-                // A cloud-only viewer still reaches Add Miner in-shell.
-                if (heroSummary != null && savedProfiles.isEmpty()) {
+                // The bottom Add Miner card follows the same v0.2.3
+                // rule: with any miner in the fleet (local or cloud)
+                // it stays hidden; it can only appear here when the
+                // fleet is empty but a kept selection still gives the
+                // hero something to show. Adding is otherwise always
+                // reachable via the fleet header and the Device tab.
+                if (heroSummary != null && showAddMinerCard) {
                     HomeAddMinerCard(onOpenSetup = onOpenSetup)
                 }
 

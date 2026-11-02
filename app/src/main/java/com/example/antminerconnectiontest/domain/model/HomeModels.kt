@@ -3,6 +3,22 @@ package com.example.antminerconnectiontest.domain.model
 import com.example.antminerconnectiontest.ui.components.MinerDetailUi
 
 /**
+ * When Home shows its "Add a miner" card (user rule, v0.2.3): ONLY
+ * when there is no miner at all — no saved local profiles AND no
+ * merged fleet entries (local or cloud). One miner of either kind is
+ * enough to hide the card; it returns only at a completely empty
+ * fleet, as the way to add the first machine. Adding stays reachable
+ * regardless: the fleet header's "+ Add Unit" link, and the permanent
+ * "Add a miner" entry on the Device tab.
+ *
+ * Pure and count-based so the rule is unit-testable without Compose.
+ */
+object AddMinerCardVisibility {
+    fun shouldShow(savedProfileCount: Int, mergedFleetCount: Int): Boolean =
+        savedProfileCount == 0 && mergedFleetCount == 0
+}
+
+/**
  * Everything the Home hero is allowed to show — and nothing else.
  *
  * The v0.2.0 "strict strip" rule (user-approved): the selected-machine
