@@ -317,4 +317,90 @@ class FleetSortingTest {
         val row = FleetSorting.rowFor(entry, now)
         assertEquals("192.168.1.10", FleetSorting.rowSubtitle(row))
     }
+
+    // --- Row UI projection (v0.2.0 strict strip) ---------------------------
+    // The Home row renders FleetRowUi only: source appears solely as the
+    // LIVE/REMOTE chip, and no pool/temp/share data exists in the model.
+
+    @Test
+    fun rowUi_remoteOnlyOnlineShowsRemoteChipAndShortFreshness() {
+        val entry = MergedMinerEntry(
+            key = "remote:a",
+            remoteSnapshot = snapshot("bani009.001", 35.4, now - 60_000L)
+        )
+        val ui = FleetSorting.rowUi(FleetSorting.rowFor(entry, now), now)
+        assertEquals(FleetSourceChip.REMOTE, ui.chip)
+        assertTrue(ui.isOnline)
+        assertEquals("35.4 TH/s", ui.hashrateLabel)
+        assertEquals("Updated 1 min ago", ui.freshnessLine)
+        // Title already is the worker identity — no repeated second line.
+        assertEquals("", ui.workerLine)
+    }
+
+    @Test
+    fun rowUi_mergedMachineWithLiveReadingIsLive() {
+        val entry = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1", "banishwor.001"),
+            remoteSnapshot = snapshot("banishwor.001", 30.0, now - 60_000L),
+            localHashrateTh = 37.1
+        )
+        val ui = FleetSorting.rowUi(FleetSorting.rowFor(entry, now), now)
+        assertEquals(FleetSourceChip.LIVE, ui.chip)
+        assertTrue(ui.isOnline)
+        assertEquals("37.1 TH/s", ui.hashrateLabel)
+        assertEquals("", ui.freshnessLine)
+    }
+
+    @Test
+    fun rowUi_offlineRemoteShowsFullLastUpdatedLine() {
+        val entry = MergedMinerEntry(
+            key = "remote:d",
+            remoteSnapshot = snapshot("bani009.201", 40.0, now - 6 * dayMs)
+        )
+        val ui = FleetSorting.rowUi(FleetSorting.rowFor(entry, now), now)
+        assertEquals(FleetSourceChip.REMOTE, ui.chip)
+        assertFalse(ui.isOnline)
+        assertEquals("Offline", ui.hashrateLabel)
+        assertTrue(ui.freshnessLine.startsWith("Last updated 6 days ago · "))
+    }
+
+    @Test
+    fun rowUi_nicknamedMachineShowsWorkerUnderNickname() {
+        val entry = MergedMinerEntry(
+            key = "remote:x",
+            remoteSnapshot = snapshot("banishwor.001", 110.0, now - 60_000L),
+            phoneDisplayName = "Hall Miner"
+        )
+        val ui = FleetSorting.rowUi(FleetSorting.rowFor(entry, now), now)
+        assertEquals("Hall Miner", ui.displayName)
+        assertEquals("banishwor.001", ui.workerLine)
+    }
+
+    @Test
+    fun rowUi_offlineLocalIsLiveChipWithLastUpdatedLine() {
+        val entry = MergedMinerEntry(
+            key = "local:2",
+            localProfile = profile("2", "banishwor.002", lastConnected = now - 3_600_000L)
+        )
+        val ui = FleetSorting.rowUi(FleetSorting.rowFor(entry, now), now)
+        assertEquals(FleetSourceChip.LIVE, ui.chip)
+        assertFalse(ui.isOnline)
+        assertEquals("Offline", ui.hashrateLabel)
+        assertTrue(ui.freshnessLine.startsWith("Last updated 1 h ago · "))
+    }
+
+    @Test
+    fun rowUi_declaresOnlyRowFields() {
+        val fieldNames = FleetRowUi::class.java.declaredFields
+            .map { it.name.lowercase() }
+            .filter { !it.startsWith("$") }
+            .toSet()
+        assertEquals(
+            setOf("displayname", "workerline", "chip", "isonline", "hashratelabel", "freshnessline"),
+            fieldNames
+        )
+        val forbidden = listOf("pool", "temp", "fan", "share", "brand")
+        assertTrue(fieldNames.none { name -> forbidden.any { name.contains(it) } })
+    }
 }
