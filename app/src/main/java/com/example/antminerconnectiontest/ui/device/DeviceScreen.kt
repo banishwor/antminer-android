@@ -46,6 +46,15 @@ import com.example.antminerconnectiontest.ui.components.SourceChip
  *   → APP: updates (manual check)
  *   → with an active local profile: hardware identity, network,
  *     firmware & OS, disconnect — as flat info lists.
+ *
+ * v0.2.4 (user's phone feedback on v0.2.3: the page read chunkier
+ * than the mockup, and Relay took too much space): the Relay section
+ * now starts COLLAPSED on every visit and its expanded form is one
+ * short helper line + compact flat actions; the theme picker is a
+ * flat text-option row (light tint on the selected option, no solid
+ * fill); Check-for-updates / Test Connection / Save are flat text
+ * actions; the selected-machine avatar is a tinted outlined chip
+ * instead of a solid block.
  */
 @Composable
 fun DeviceScreen(
@@ -98,7 +107,9 @@ fun DeviceScreen(
     // Cloud form states — one Relay switch (see CloudSyncConfig).
     var cloudUserInput by remember(cloudConfig) { mutableStateOf(cloudConfig.userName) }
     var relayEnabled by remember(cloudConfig) { mutableStateOf(cloudConfig.isSyncEnabled) }
-    var isCloudExpanded by remember { mutableStateOf(cloudConfig.isSyncEnabled || cloudConfig.userName.isNotBlank()) }
+    // Collapsed by default on EVERY visit (v0.2.4): plain remember, so
+    // leaving the tab resets it — the expanded state is never kept.
+    var isCloudExpanded by remember { mutableStateOf(false) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val installedVersion = remember {
@@ -166,16 +177,17 @@ fun DeviceScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primary),
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = selectedMachineName.trim().firstOrNull()?.uppercase() ?: "?",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 19.sp,
-                        color = MaterialTheme.colorScheme.onPrimary
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 Spacer(modifier = Modifier.width(11.dp))
@@ -411,7 +423,7 @@ fun DeviceScreen(
         AnimatedVisibility(visible = isCloudExpanded) {
             Column(
                 modifier = Modifier.padding(horizontal = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
                     value = cloudUserInput,
@@ -423,25 +435,15 @@ fun DeviceScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // One short helper line (v0.2.4) — replaces the two
+                // long explainer paragraphs: uploads happen under this
+                // name; relay runs 24/7 in the background when on;
+                // watching remote miners works either way.
                 Text(
-                    text = "Relaying uploads your local miners under this user name, so you can watch them from anywhere in Remote View. Other people who know the name could see your miners' hashrate, temperature and status.",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Uploads go out under this name; while Relay is on it keeps running 24/7 in the background. Watching remote miners works either way.",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                Column {
-                    Text(
-                        text = "Relay",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "On: your local miners are uploaded under your user name and relaying keeps running 24/7 in the background, even when the app is closed. Off: nothing is uploaded. Watching remote miners works either way.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
 
                 // Test Result Badge
                 if (!cloudTestMessage.isNullOrBlank()) {
@@ -455,7 +457,7 @@ fun DeviceScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -475,29 +477,29 @@ fun DeviceScreen(
                     }
                 }
 
-                // Action Buttons Row
+                // Flat text actions (v0.2.4) — no outlined/solid boxes.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
+                    TextButton(
                         onClick = { onTestCloudConnection(cloudConfig.webhookUrl, cloudUserInput.trim()) },
                         enabled = !isTestingCloud && cloudUserInput.isNotBlank(),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         if (isTestingCloud) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Testing...", fontSize = 11.sp)
+                            Text("Testing...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Test Connection", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Test Connection", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Button(
+                    TextButton(
                         onClick = {
                             onSaveCloudConfig(
                                 cloudConfig.webhookUrl,
@@ -505,13 +507,11 @@ fun DeviceScreen(
                                 relayEnabled
                             )
                         },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.weight(1f)
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -545,10 +545,7 @@ fun DeviceScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(4.dp),
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             ThemeOptionButton(
@@ -607,17 +604,18 @@ fun DeviceScreen(
                     )
                 }
             }
-            OutlinedButton(
+            // Flat text action (v0.2.4) — no outlined box.
+            TextButton(
                 onClick = onCheckForUpdates,
                 enabled = !isCheckingForUpdate,
-                shape = RoundedCornerShape(8.dp)
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
             ) {
                 if (isCheckingForUpdate) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Checking...", fontSize = 11.sp)
+                    Text("Checking...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 } else {
-                    Text("Check for updates", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Check for updates", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -832,6 +830,11 @@ private fun DeviceInfoDivider() {
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 }
 
+/**
+ * Flat theme option (v0.2.4): no solid fill — the selected option is
+ * a light accent tint with accent text; unselected options are plain
+ * muted text on the page background.
+ */
 @Composable
 private fun ThemeOptionButton(
     label: String,
@@ -841,27 +844,27 @@ private fun ThemeOptionButton(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
         shape = RoundedCornerShape(8.dp),
         modifier = modifier.clickable { onClick() }
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 8.dp),
+            modifier = Modifier.padding(vertical = 7.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
+                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
