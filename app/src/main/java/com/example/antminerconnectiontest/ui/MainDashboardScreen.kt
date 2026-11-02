@@ -136,7 +136,6 @@ fun MainDashboardScreen(
                             HomeScreen(
                                 profile = activeProfile,
                                 savedProfiles = uiState.savedProfiles,
-                                remoteMiners = uiState.remoteMiners,
                                 mergedMiners = mergedMiners,
                                 selectedRemoteMiner = uiState.selectedRemoteMiner,
                                 minerHashrates = uiState.minerHashrates,
@@ -227,9 +226,12 @@ fun MainDashboardScreen(
                             activeProfile = activeProfile,
                             savedProfiles = uiState.savedProfiles,
                             minerHashrates = uiState.minerHashrates,
+                            mergedMiners = mergedMiners,
+                            selectedRemoteMinerId = uiState.selectedRemoteMiner?.id,
                             onSelectProfile = { profile ->
                                 viewModel.selectSavedProfile(profile)
                             },
+                            onSelectRemoteMiner = viewModel::selectRemoteMiner,
                             onAddNewMiner = {
                                 viewModel.disconnect()
                             },

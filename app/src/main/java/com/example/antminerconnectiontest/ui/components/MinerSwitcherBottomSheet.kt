@@ -23,7 +23,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,7 +34,10 @@ fun MinerSwitcherBottomSheet(
     activeProfile: MinerProfile?,
     savedProfiles: List<MinerProfile>,
     minerHashrates: Map<String, Double> = emptyMap(),
+    mergedMiners: List<MergedMinerEntry> = emptyList(),
+    selectedRemoteMinerId: String? = null,
     onSelectProfile: (MinerProfile) -> Unit,
+    onSelectRemoteMiner: (RemoteMinerSnapshot) -> Unit = {},
     onAddNewMiner: () -> Unit,
     onDeleteProfile: (String) -> Unit,
     onDismiss: () -> Unit
@@ -106,12 +111,44 @@ fun MinerSwitcherBottomSheet(
                             profile = profile,
                             isActive = isActive,
                             hashrateTh = minerHashrates[profile.id],
+                            hasRemoteSnapshot = mergedMiners.any {
+                                it.localProfile?.id == profile.id && it.remoteSnapshot != null
+                            },
                             onSelect = {
                                 onSelectProfile(profile)
                                 onDismiss()
                             },
                             onDelete = { onDeleteProfile(profile.id) }
                         )
+                    }
+
+                    // Remote-only machines (in the cloud sheet, not saved
+                    // locally): same list, one entry per machine — merged
+                    // machines already appear above as local rows.
+                    val remoteOnlyEntries = mergedMiners.filter {
+                        it.localProfile == null && it.remoteSnapshot != null
+                    }
+                    if (remoteOnlyEntries.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Cloud Miners",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                        items(remoteOnlyEntries) { entry ->
+                            val snapshot = entry.remoteSnapshot!!
+                            RemoteRowItem(
+                                entry = entry,
+                                isSelected = snapshot.id == selectedRemoteMinerId,
+                                onSelect = {
+                                    onSelectRemoteMiner(snapshot)
+                                    onDismiss()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -124,6 +161,7 @@ private fun ProfileRowItem(
     profile: MinerProfile,
     isActive: Boolean,
     hashrateTh: Double? = null,
+    hasRemoteSnapshot: Boolean = false,
     onSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -197,6 +235,16 @@ private fun ProfileRowItem(
                                 color = TextSecondary
                             )
                         }
+                        if (hasRemoteSnapshot) {
+                            // Same machine also exists in the cloud sheet —
+                            // it is ONE entry; the chip just says the remote
+                            // snapshot is attached as fallback.
+                            Text(
+                                text = " • ☁ Cloud",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CyberCyan
+                            )
+                        }
                     }
                     if (profile.nickname.isNotBlank() && profile.workerName.isNotBlank()) {
                         Text(
@@ -255,5 +303,85 @@ private fun ProfileRowItem(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun RemoteRowItem(
+    entry: MergedMinerEntry,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    val snapshot = entry.remoteSnapshot ?: return
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) Color(0xFF0F1713) else MinerSurfaceVariant
+        ),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(if (isSelected) CyberCyan else MinerBorder)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(CyberCyan.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = entry.displayName,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "☁️ ${snapshot.user} • ${snapshot.ip}",
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CyberCyan
+                    )
+                    Text(
+                        text = if (snapshot.isStale) "Offline • ${snapshot.timeAgoFormatted}" else "${String.format(java.util.Locale.US, "%.1f", entry.displayHashrateTh)} TH/s • ${snapshot.timeAgoFormatted}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (snapshot.isStale) Color(0xFFEF4444) else TextSecondary
+                    )
+                }
+            }
+
+            if (isSelected) {
+                Surface(
+                    color = CyberCyan.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "VIEWING",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CyberCyan,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
     }
 }

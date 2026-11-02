@@ -44,7 +44,6 @@ import java.util.Locale
 fun HomeScreen(
     profile: MinerProfile,
     savedProfiles: List<MinerProfile>,
-    remoteMiners: List<RemoteMinerSnapshot> = emptyList(),
     mergedMiners: List<MergedMinerEntry> = emptyList(),
     selectedRemoteMiner: RemoteMinerSnapshot? = null,
     minerHashrates: Map<String, Double> = emptyMap(),
@@ -67,12 +66,25 @@ fun HomeScreen(
     val isOnline = data?.isOnline == true
     val isExplicitRemote = selectedRemoteMiner != null
 
-    // If explicit remote selected -> show it; else if local is offline -> show first available cloud miner
-    val effectiveRemote = when {
-        selectedRemoteMiner != null -> selectedRemoteMiner
-        !isOnline && remoteMiners.isNotEmpty() -> remoteMiners.first()
-        else -> null
+    // Remote display is ALWAYS a deliberate selection. The dashboard used
+    // to silently substitute remoteMiners.first() whenever the local miner
+    // went offline — the user could end up looking at a cloud feed (maybe
+    // another machine entirely) without choosing it. That swap is gone.
+    //
+    // The one designed precedence: when the selected snapshot is the SAME
+    // machine as the active local profile and live local data for it has
+    // been fetched, the local data overwrites the snapshot for display —
+    // it is fresher. While local data is unavailable (still loading,
+    // miner offline), the snapshot shows. The banner below makes which
+    // one is on screen visible either way.
+    val selectedEntry = selectedRemoteMiner?.let { snap ->
+        mergedMiners.firstOrNull { it.remoteSnapshot?.id == snap.id }
     }
+    val localWinsForSelectedRemote = selectedRemoteMiner != null &&
+        selectedEntry?.localProfile?.id == profile.id &&
+        data?.profileId == profile.id &&
+        data?.isOnline == true
+    val effectiveRemote = if (localWinsForSelectedRemote) null else selectedRemoteMiner
 
     val isCloudMode = effectiveRemote != null
     val isStaleCloud = isCloudMode && effectiveRemote?.isStale == true
@@ -294,6 +306,56 @@ fun HomeScreen(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // Merged selection where live LOCAL data won over the machine's
+            // cloud snapshot: say so on screen — precedence is visible,
+            // never a silent swap in either direction.
+            if (selectedRemoteMiner != null && !isCloudMode) {
+                Surface(
+                    color = AntminerEmerald.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = SolidColor(AntminerEmerald.copy(alpha = 0.4f))
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Wifi,
+                                contentDescription = null,
+                                tint = AntminerEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "LOCAL LIVE — SAME MACHINE",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AntminerEmerald
+                                )
+                                Text(
+                                    text = "Showing live data from this miner • Its cloud snapshot is kept as fallback",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        TextButton(
+                            onClick = onClearRemoteMinerView,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text("Clear", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
