@@ -455,4 +455,72 @@ class DashboardViewModelTest {
         assertEquals("192.168.1.55", viewModel.uiState.value.activeProfile?.host)
         assertEquals("miner_1", viewModel.uiState.value.activeProfile?.id)
     }
+
+    // ── v0.3.0: appearance style + relay-only mode ───────────────────
+
+    @Test
+    fun appStyle_defaultsToViolet_andCanSwitchToLiquidGlass() {
+        val viewModel = DashboardViewModel()
+        assertEquals(
+            com.example.antminerconnectiontest.theme.AppStyle.VIOLET,
+            viewModel.uiState.value.appStyle
+        )
+
+        viewModel.setAppStyle(com.example.antminerconnectiontest.theme.AppStyle.LIQUID_GLASS)
+        assertEquals(
+            com.example.antminerconnectiontest.theme.AppStyle.LIQUID_GLASS,
+            viewModel.uiState.value.appStyle
+        )
+
+        viewModel.setAppStyle(com.example.antminerconnectiontest.theme.AppStyle.VIOLET)
+        assertEquals(
+            com.example.antminerconnectiontest.theme.AppStyle.VIOLET,
+            viewModel.uiState.value.appStyle
+        )
+    }
+
+    @Test
+    fun relayOnlyMode_defaultsOff_andToggles() {
+        val viewModel = DashboardViewModel()
+        assertFalse(viewModel.uiState.value.relayOnlyMode)
+
+        viewModel.setRelayOnlyMode(true)
+        assertTrue(viewModel.uiState.value.relayOnlyMode)
+        // Routing follows the flag: status screen only.
+        assertEquals(
+            MainRoute.RELAY_ONLY,
+            MainShellRouting.route(
+                isLocalSetupOpen = viewModel.uiState.value.isLocalSetupOpen,
+                isRelayOnlyMode = viewModel.uiState.value.relayOnlyMode
+            )
+        )
+
+        viewModel.setRelayOnlyMode(false)
+        assertFalse(viewModel.uiState.value.relayOnlyMode)
+        assertEquals(
+            MainRoute.MAIN_SHELL,
+            MainShellRouting.route(
+                isLocalSetupOpen = viewModel.uiState.value.isLocalSetupOpen,
+                isRelayOnlyMode = viewModel.uiState.value.relayOnlyMode
+            )
+        )
+    }
+
+    @Test
+    fun relayOnlyMode_enablingClosesSetupFlow() {
+        val viewModel = DashboardViewModel()
+        viewModel.openLocalSetup()
+        assertTrue(viewModel.uiState.value.isLocalSetupOpen)
+
+        viewModel.setRelayOnlyMode(true)
+        // The two top-level flags never fight: setup is closed.
+        assertFalse(viewModel.uiState.value.isLocalSetupOpen)
+        assertEquals(
+            MainRoute.RELAY_ONLY,
+            MainShellRouting.route(
+                isLocalSetupOpen = viewModel.uiState.value.isLocalSetupOpen,
+                isRelayOnlyMode = viewModel.uiState.value.relayOnlyMode
+            )
+        )
+    }
 }

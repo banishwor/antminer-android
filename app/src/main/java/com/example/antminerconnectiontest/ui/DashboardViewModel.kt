@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
+import com.example.antminerconnectiontest.theme.AppStyle
 import com.example.antminerconnectiontest.theme.ThemeMode
 import com.example.antminerconnectiontest.data.analysis.DailyLogAnalyzer
 import com.example.antminerconnectiontest.data.storage.DailyAnalysisStorageManager
@@ -88,6 +89,18 @@ data class AppUiState(
     val scannerPasswordInput: String = "root",
     val isScannerPasswordVisible: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** Appearance style (v0.3.0): solid Violet (default) or Liquid Glass. */
+    val appStyle: AppStyle = AppStyle.VIOLET,
+    /**
+     * Relay-only mode (v0.3.0): the persisted Settings switch. When
+     * true the app shows only the relay status screen; the relay
+     * underneath (service, auto-connect, uploads) is unaffected.
+     */
+    val relayOnlyMode: Boolean = false,
+    /** Last successful relay upload, as reported by the relay itself (persisted). */
+    val lastRelayUploadAtMs: Long? = null,
+    /** Last relay upload error, as reported by the relay itself (persisted). */
+    val relayLastError: String? = null,
     val selectedLogsTab: LogsTab = LogsTab.CURRENT,
     val currentLogText: String? = null,
     val historyLogText: String? = null,
@@ -251,6 +264,51 @@ class DashboardViewModel(
         } catch (_: Throwable) {}
     }
 
+    /** Appearance style (v0.3.0): Violet (default) or Liquid Glass. Persisted like the theme mode. */
+    fun setAppStyle(style: AppStyle) {
+        _uiState.update { it.copy(appStyle = style) }
+        try {
+            storageManager?.saveAppStyle(style.name)
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Relay-only mode (v0.3.0): persisted, so a site phone restarts
+     * back into relay-only. Turning it on also closes the setup flow
+     * (the two top-level flags must never fight — see
+     * [MainShellRouting]) and is immediate: no confirmation. It changes
+     * NOTHING underneath: the background relay service, auto-connect
+     * triggers and uploads keep running exactly as in full mode.
+     */
+    fun setRelayOnlyMode(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                relayOnlyMode = enabled,
+                isLocalSetupOpen = if (enabled) false else it.isLocalSetupOpen
+            )
+        }
+        try {
+            storageManager?.saveRelayOnlyMode(enabled)
+        } catch (_: Throwable) {}
+        if (enabled) refreshRelayStatus()
+    }
+
+    /**
+     * Re-reads the relay's own persisted report (last successful
+     * upload, last error) — written by the background service and by
+     * this ViewModel's sync cycle — so the relay-only status screen
+     * shows the relay's actual state. Read-only; changes no cadence.
+     */
+    fun refreshRelayStatus() {
+        val storage = storageManager ?: return
+        try {
+            val (lastUpload, error) = storage.loadRelayStatus()
+            _uiState.update {
+                it.copy(lastRelayUploadAtMs = lastUpload, relayLastError = error)
+            }
+        } catch (_: Throwable) {}
+    }
+
     fun toggleThemeMode() {
         // Cycle through all three modes so the header toggle can also
         // return to "follow system" without opening Settings.
@@ -306,10 +364,18 @@ class DashboardViewModel(
             val savedThemeMode = storageManager.loadThemeMode()?.let { stored ->
                 ThemeMode.values().firstOrNull { it.name == stored }
             } ?: ThemeMode.SYSTEM
+            val savedAppStyle = storageManager.loadAppStyle()?.let { stored ->
+                AppStyle.values().firstOrNull { it.name == stored }
+            } ?: AppStyle.VIOLET
+            val (savedLastUpload, savedRelayError) = storageManager.loadRelayStatus()
             _uiState.update {
                 it.copy(
                     cloudConfig = savedCloudConfig,
                     themeMode = savedThemeMode,
+                    appStyle = savedAppStyle,
+                    relayOnlyMode = storageManager.loadRelayOnlyMode(),
+                    lastRelayUploadAtMs = savedLastUpload,
+                    relayLastError = savedRelayError,
                     savedProfiles = profileManager.savedProfiles.value,
                     nicknameOverrides = storageManager.loadPhoneNicknames()
                 )
@@ -460,7 +526,11 @@ class DashboardViewModel(
         startCloudSyncLoop()
 
         // One update check per cold start. Silent on failure/offline.
-        checkForUpdates(manual = false)
+        // In relay-only mode the check is skipped entirely: a site
+        // phone must never be interrupted by update UI (v0.3.0).
+        if (!_uiState.value.relayOnlyMode) {
+            checkForUpdates(manual = false)
+        }
 
         // Default selection (v0.2.0, approved model): there is always
         // ONE selected machine — the hero's machine, which every tab
@@ -731,7 +801,23 @@ class DashboardViewModel(
                     fetched?.miners ?: _uiState.value.remoteMiners
                 )
                 if (uploadable.isNotEmpty()) {
-                    cloudSyncManager.uploadLocalMiners(cfg.webhookUrl, cfg.userName, uploadable)
+                    // Stamp the relay's own status report (v0.3.0) so
+                    // the relay-only screen shows real upload state:
+                    // success records the time and clears the error;
+                    // failure records the error message.
+                    val uploadResult = cloudSyncManager.uploadLocalMiners(cfg.webhookUrl, cfg.userName, uploadable)
+                    uploadResult.fold(
+                        onSuccess = {
+                            val now = System.currentTimeMillis()
+                            try { storageManager?.saveRelayStatus(now, null) } catch (_: Throwable) {}
+                            _uiState.update { it.copy(lastRelayUploadAtMs = now, relayLastError = null) }
+                        },
+                        onFailure = { err ->
+                            val message = err.message ?: "Upload failed"
+                            try { storageManager?.saveRelayStatus(null, message) } catch (_: Throwable) {}
+                            _uiState.update { it.copy(relayLastError = message) }
+                        }
+                    )
                 }
             }
         }

@@ -203,6 +203,12 @@ class MinerRelayService : Service() {
                                 val totalTh = uploadable.sumOf { it.hashrate5s }
 
                                 if (uploadRes.isSuccess) {
+                                    // The relay's own status report
+                                    // (v0.3.0): the relay-only screen
+                                    // reads this persisted state.
+                                    try {
+                                        storageManager.saveRelayStatus(System.currentTimeMillis(), null)
+                                    } catch (_: Exception) {}
                                     val deferredNote = if (deferredCount > 0) {
                                         " • $deferredCount deferred (worker name unknown)"
                                     } else {
@@ -222,6 +228,12 @@ class MinerRelayService : Service() {
                                         healLegacyDuplicates(config, uploadable.map { it.id }, fleet)
                                     }
                                 } else {
+                                    try {
+                                        storageManager.saveRelayStatus(
+                                            null,
+                                            uploadRes.exceptionOrNull()?.message ?: "Upload failed — check internet connection"
+                                        )
+                                    } catch (_: Exception) {}
                                     updateNotification(
                                         "⚠️ Relay Sync Failed",
                                         "${uploadRes.exceptionOrNull()?.message ?: "Check internet connection"}"

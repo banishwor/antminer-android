@@ -36,4 +36,38 @@ class MainShellRoutingTest {
         // The flag is the whole decision: closed setup always means shell.
         assertEquals(MainRoute.MAIN_SHELL, MainShellRouting.route(isLocalSetupOpen = false))
     }
+
+    // ── Relay-only mode (v0.3.0) ─────────────────────────────────────
+
+    @Test
+    fun relayOnlyOn_showsOnlyTheRelayStatusScreen() {
+        // Regardless of profile/fleet state (routing never sees them):
+        // the persisted switch alone decides.
+        assertEquals(
+            MainRoute.RELAY_ONLY,
+            MainShellRouting.route(isLocalSetupOpen = false, isRelayOnlyMode = true)
+        )
+    }
+
+    @Test
+    fun relayOnlyOn_winsOverSetupFlag() {
+        // Enabling relay-only also closes setup, but restored state
+        // must never fight: relay-only takes precedence.
+        assertEquals(
+            MainRoute.RELAY_ONLY,
+            MainShellRouting.route(isLocalSetupOpen = true, isRelayOnlyMode = true)
+        )
+    }
+
+    @Test
+    fun relayOnlyOff_shellAndSetupBehaveAsBefore() {
+        assertEquals(
+            MainRoute.MAIN_SHELL,
+            MainShellRouting.route(isLocalSetupOpen = false, isRelayOnlyMode = false)
+        )
+        assertEquals(
+            MainRoute.SETUP,
+            MainShellRouting.route(isLocalSetupOpen = true, isRelayOnlyMode = false)
+        )
+    }
 }

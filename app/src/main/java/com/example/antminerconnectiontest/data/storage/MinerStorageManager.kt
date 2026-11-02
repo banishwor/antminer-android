@@ -35,6 +35,10 @@ class MinerStorageManager(context: Context) {
         private const val KEY_START_CHOICE = "key_start_choice"
         private const val KEY_THEME_MODE = "key_theme_mode"
         private const val KEY_PHONE_NICKNAMES = "key_phone_nicknames"
+        private const val KEY_APP_STYLE = "key_app_style"
+        private const val KEY_RELAY_ONLY = "key_relay_only"
+        private const val KEY_RELAY_LAST_UPLOAD_MS = "relay_last_upload_ms"
+        private const val KEY_RELAY_LAST_ERROR = "relay_last_error"
 
         /** Marks an encrypted payload: prefix + Base64(IV || ciphertext). */
         private const val ENCRYPTED_PREFIX = "enc_v1:"
@@ -197,6 +201,58 @@ class MinerStorageManager(context: Context) {
 
     fun saveThemeMode(modeName: String) {
         prefs.edit().putString(KEY_THEME_MODE, modeName).apply()
+    }
+
+    /**
+     * The appearance style ("VIOLET" / "LIQUID_GLASS"), or null when
+     * never chosen — the app then uses the Violet default.
+     */
+    fun loadAppStyle(): String? {
+        return prefs.getString(KEY_APP_STYLE, null)
+    }
+
+    fun saveAppStyle(styleName: String) {
+        prefs.edit().putString(KEY_APP_STYLE, styleName).apply()
+    }
+
+    /**
+     * Relay-only mode (v0.3.0): when true the app shows only the relay
+     * status screen. Persisted so a site phone comes back up in
+     * relay-only after a reboot/restart, exactly as it was left.
+     */
+    fun loadRelayOnlyMode(): Boolean {
+        return prefs.getBoolean(KEY_RELAY_ONLY, false)
+    }
+
+    fun saveRelayOnlyMode(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_RELAY_ONLY, enabled).apply()
+    }
+
+    /**
+     * The relay's own report of itself, written by whoever completed
+     * an upload cycle (the 24/7 background service, or the foreground
+     * sync cycle): the last successful upload time and the last upload
+     * error. The relay-only status screen reads these so what it shows
+     * is the relay's actual state, not the UI's guess. A null timestamp
+     * argument keeps the stored one; a null error clears it.
+     */
+    fun saveRelayStatus(lastUploadMs: Long?, error: String?) {
+        val editor = prefs.edit()
+        if (lastUploadMs != null) {
+            editor.putLong(KEY_RELAY_LAST_UPLOAD_MS, lastUploadMs)
+        }
+        if (error != null) {
+            editor.putString(KEY_RELAY_LAST_ERROR, error)
+        } else {
+            editor.remove(KEY_RELAY_LAST_ERROR)
+        }
+        editor.apply()
+    }
+
+    /** (last successful upload epoch ms, last upload error) as last reported. */
+    fun loadRelayStatus(): Pair<Long?, String?> {
+        val ts = prefs.getLong(KEY_RELAY_LAST_UPLOAD_MS, 0L)
+        return (if (ts > 0L) ts else null) to prefs.getString(KEY_RELAY_LAST_ERROR, null)
     }
 
     /**
