@@ -31,9 +31,7 @@ import com.example.antminerconnectiontest.ui.pools.PoolsScreen
 import com.example.antminerconnectiontest.ui.remote.RemoteHardwareTab
 import com.example.antminerconnectiontest.ui.remote.RemoteLogsTab
 import com.example.antminerconnectiontest.ui.remote.RemotePoolsTab
-import com.example.antminerconnectiontest.ui.remote.RemoteViewScreen
 import com.example.antminerconnectiontest.ui.setup.SetupScreen
-import com.example.antminerconnectiontest.ui.start.StartChoiceScreen
 
 @Composable
 fun MainDashboardScreen(
@@ -54,9 +52,9 @@ fun MainDashboardScreen(
         viewModel.refreshIfStale()
     }
 
-    // The selected remote miner as unified detail data — feeds the
-    // Hardware / Pools / Logs tabs when no local miner is active
-    // (remote mode), resolved with the same name chain the fleet uses.
+    // The selected snapshot miner as unified detail data — feeds the
+    // Hardware / Pools / Logs tabs when no local miner is active,
+    // resolved with the same name chain the fleet uses.
     val selectedRemoteDetail = uiState.selectedRemoteMiner?.let { snap ->
         val entry = mergedMiners.firstOrNull { it.remoteSnapshot?.id == snap.id }
         snap.toMinerDetailUi(
@@ -66,21 +64,12 @@ fun MainDashboardScreen(
     }
 
     AntminerConnectionTestTheme(themeMode = uiState.themeMode) {
-        // Top-level routing (see MainShellRouting): once a start choice
-        // exists the main shell ALWAYS renders — a Remote View starter
-        // with no local miner connected gets the same Scaffold and
-        // bottom navigation as everyone else (v0.1.8 fix; before, they
-        // were stranded on a bare standalone remote screen).
-        val route = MainShellRouting.route(
-            hasSavedProfiles = uiState.savedProfiles.isNotEmpty(),
-            startChoice = uiState.startChoice,
-            hasActiveProfile = activeProfile != null,
-            isLocalSetupOpen = uiState.isLocalSetupOpen
-        )
+        // Top-level routing (see MainShellRouting): ONE shell for
+        // everyone (v0.1.9) — fresh installs, fleet-only viewers and
+        // connected users alike. The only other destination is the
+        // add-miner setup flow, opened explicitly and exited back here.
+        val route = MainShellRouting.route(isLocalSetupOpen = uiState.isLocalSetupOpen)
         when (route) {
-            MainRoute.START_CHOICE -> {
-                StartChoiceScreen(viewModel = viewModel, uiState = uiState)
-            }
             MainRoute.MAIN_SHELL -> {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
@@ -168,18 +157,10 @@ fun MainDashboardScreen(
                 ) {
                     when (uiState.selectedTab) {
                         DashboardTab.HOME -> {
-                            if (activeProfile == null) {
-                                // Remote mode: the fleet + unified
-                                // remote detail as this shell's Home
-                                // tab — same content Remote View always
-                                // had, now with the menus around it.
-                                RemoteViewScreen(
-                                    viewModel = viewModel,
-                                    uiState = uiState,
-                                    mergedMiners = mergedMiners,
-                                    onEditNickname = { nicknameEditEntry = it }
-                                )
-                            } else {
+                            // The ONE Home (v0.1.9): same composition
+                            // with or without a local miner — fleet,
+                            // selected machine (live or snapshot), and
+                            // setup content while nothing is configured.
                             HomeScreen(
                                 profile = activeProfile,
                                 savedProfiles = uiState.savedProfiles,
@@ -198,12 +179,18 @@ fun MainDashboardScreen(
                                 onSelectMinerProfile = viewModel::selectSavedProfile,
                                 onSelectRemoteMiner = viewModel::selectRemoteMiner,
                                 onClearRemoteMinerView = viewModel::clearRemoteMinerView,
-                                onAddNewMiner = viewModel::disconnect,
+                                onOpenSetup = viewModel::openLocalSetup,
                                 onToggleTheme = viewModel::toggleThemeMode,
                                 nicknameOverrides = uiState.nicknameOverrides,
-                                onEditNickname = { nicknameEditEntry = it }
+                                onEditNickname = { nicknameEditEntry = it },
+                                needsPasswordMachines = uiState.autoConnectNeedsPassword,
+                                onNeedsPasswordTap = viewModel::openNeedsPasswordEntry,
+                                onSaveCloudConfig = viewModel::updateCloudConfig,
+                                onTestCloudConnection = viewModel::testCloudConnection,
+                                isTestingCloud = uiState.isTestingCloud,
+                                cloudTestMessage = uiState.cloudTestMessage,
+                                isCloudConnected = uiState.isCloudConnected
                             )
-                            }
                         }
                         DashboardTab.HARDWARE -> {
                             if (activeProfile == null) {
@@ -280,16 +267,11 @@ fun MainDashboardScreen(
                                 updateCheckMessage = uiState.updateCheckMessage,
                                 isCheckingForUpdate = uiState.isCheckingForUpdate,
                                 onCheckForUpdates = { viewModel.checkForUpdates(manual = true) },
-                                // In remote mode "Add Miner" must open
-                                // the local setup flow (there is no
-                                // active miner to disconnect from); with
-                                // a miner active it stays the disconnect
-                                // path it has always been.
-                                onAddNewMiner = if (activeProfile == null) {
-                                    viewModel::openLocalSetup
-                                } else {
-                                    viewModel::disconnect
-                                },
+                                // "Add Miner" opens the setup flow —
+                                // with or without an active miner; the
+                                // flow exits back into this shell and
+                                // never disconnects the current miner.
+                                onAddNewMiner = viewModel::openLocalSetup,
                                 onDisconnect = viewModel::disconnect
                             )
                         }
@@ -309,7 +291,8 @@ fun MainDashboardScreen(
                             },
                             onSelectRemoteMiner = viewModel::selectRemoteMiner,
                             onAddNewMiner = {
-                                viewModel.disconnect()
+                                viewModel.toggleProfileSwitcher(false)
+                                viewModel.openLocalSetup()
                             },
                             onDeleteProfile = { id ->
                                 viewModel.deleteSavedProfile(id)
@@ -322,19 +305,14 @@ fun MainDashboardScreen(
                 }
             }
             }
-            // Local setup: scan/manual add flow. Reached by Scan starters,
-            // by "Add New Miner", and by remote starters adding a local
-            // miner on site (who exit back into the main shell via
-            // closeLocalSetup — the shell's Home tab is their fleet).
+            // Add-miner setup: scan/manual add flow, reached only by an
+            // explicit tap (Add Miner / Add Unit / a needs-password
+            // card). Exiting always returns to the one shell.
             MainRoute.SETUP -> {
                 SetupScreen(
                     viewModel = viewModel,
                     uiState = uiState,
-                    onExitSetup = if (uiState.startChoice == StartChoice.REMOTE) {
-                        viewModel::closeLocalSetup
-                    } else {
-                        null
-                    }
+                    onExitSetup = viewModel::closeLocalSetup
                 )
             }
         }

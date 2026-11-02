@@ -4,112 +4,36 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The top-level routing rules (v0.1.8). The regression being pinned:
- * a Remote View starter with no local miner connected used to be
- * routed to a bare standalone remote screen with no bottom navigation
- * — they must land in the main shell like everyone else.
+ * The top-level routing rules (v0.1.9). The regression being pinned:
+ * earlier versions forked on a persisted first-open choice — Remote
+ * starters were stranded on a separate remote home with different UI.
+ * There is now exactly one shell for everyone; the only other
+ * destination is the explicitly-opened add-miner setup flow.
  */
 class MainShellRoutingTest {
 
     @Test
-    fun freshInstallAsksStartChoice() {
-        assertEquals(
-            MainRoute.START_CHOICE,
-            MainShellRouting.route(
-                hasSavedProfiles = false,
-                startChoice = null,
-                hasActiveProfile = false,
-                isLocalSetupOpen = false
-            )
-        )
+    fun freshInstall_landsDirectlyInMainShell() {
+        // No saved profiles, no cloud setup, no choice ever made: the
+        // shell (with its in-Home setup content) is the first screen.
+        assertEquals(MainRoute.MAIN_SHELL, MainShellRouting.route(isLocalSetupOpen = false))
     }
 
     @Test
-    fun remoteStarterWithoutLocalMinerGetsMainShell() {
-        assertEquals(
-            MainRoute.MAIN_SHELL,
-            MainShellRouting.route(
-                hasSavedProfiles = false,
-                startChoice = StartChoice.REMOTE,
-                hasActiveProfile = false,
-                isLocalSetupOpen = false
-            )
-        )
+    fun migratedRemoteOrScanStarter_landsInMainShell() {
+        // A persisted start choice from an older version is never read
+        // anymore, so routing cannot depend on it: same shell.
+        assertEquals(MainRoute.MAIN_SHELL, MainShellRouting.route(isLocalSetupOpen = false))
     }
 
     @Test
-    fun remoteStarterWithSavedProfilesButNoActiveMinerGetsMainShell() {
-        assertEquals(
-            MainRoute.MAIN_SHELL,
-            MainShellRouting.route(
-                hasSavedProfiles = true,
-                startChoice = StartChoice.REMOTE,
-                hasActiveProfile = false,
-                isLocalSetupOpen = false
-            )
-        )
+    fun addMinerFlowOpen_goesToSetup() {
+        assertEquals(MainRoute.SETUP, MainShellRouting.route(isLocalSetupOpen = true))
     }
 
     @Test
-    fun remoteStarterAddingLocalMinerGoesToSetup() {
-        assertEquals(
-            MainRoute.SETUP,
-            MainShellRouting.route(
-                hasSavedProfiles = false,
-                startChoice = StartChoice.REMOTE,
-                hasActiveProfile = false,
-                isLocalSetupOpen = true
-            )
-        )
-    }
-
-    @Test
-    fun activeProfileAlwaysGetsMainShell() {
-        // Even if a stale local-setup flag were set, a connected user
-        // keeps the shell — the pre-v0.1.8 precedence.
-        assertEquals(
-            MainRoute.MAIN_SHELL,
-            MainShellRouting.route(
-                hasSavedProfiles = true,
-                startChoice = StartChoice.SCAN,
-                hasActiveProfile = true,
-                isLocalSetupOpen = true
-            )
-        )
-        assertEquals(
-            MainRoute.MAIN_SHELL,
-            MainShellRouting.route(
-                hasSavedProfiles = true,
-                startChoice = StartChoice.REMOTE,
-                hasActiveProfile = true,
-                isLocalSetupOpen = false
-            )
-        )
-    }
-
-    @Test
-    fun scanStarterWithoutMinerStillGoesToSetup() {
-        assertEquals(
-            MainRoute.SETUP,
-            MainShellRouting.route(
-                hasSavedProfiles = false,
-                startChoice = StartChoice.SCAN,
-                hasActiveProfile = false,
-                isLocalSetupOpen = false
-            )
-        )
-    }
-
-    @Test
-    fun legacyProfilesWithoutChoiceOrActiveMinerGoToSetup() {
-        assertEquals(
-            MainRoute.SETUP,
-            MainShellRouting.route(
-                hasSavedProfiles = true,
-                startChoice = null,
-                hasActiveProfile = false,
-                isLocalSetupOpen = false
-            )
-        )
+    fun setupClosed_returnsToMainShell() {
+        // The flag is the whole decision: closed setup always means shell.
+        assertEquals(MainRoute.MAIN_SHELL, MainShellRouting.route(isLocalSetupOpen = false))
     }
 }
