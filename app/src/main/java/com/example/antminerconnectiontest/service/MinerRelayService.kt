@@ -11,6 +11,9 @@ import com.example.antminerconnectiontest.data.api.AntminerReadApiImpl
 import com.example.antminerconnectiontest.data.api.MinerReadApi
 import com.example.antminerconnectiontest.data.cloud.CloudSyncManager
 import com.example.antminerconnectiontest.data.storage.MinerStorageManager
+import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
+import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.RelayUpload
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
@@ -27,6 +30,8 @@ class MinerRelayService : Service() {
     private val readApi: MinerReadApi = AntminerReadApiImpl()
     private lateinit var storageManager: MinerStorageManager
     private var syncJob: Job? = null
+    /** Legacy-duplicate healing runs once per service start (best-effort). */
+    private var legacyHealDone = false
 
     companion object {
         const val CHANNEL_ID = "antminer_cloud_relay_channel"
@@ -88,6 +93,7 @@ class MinerRelayService : Service() {
                         } else {
                             val profiles = storageManager.loadSavedProfiles()
                             val snapshots = mutableListOf<RemoteMinerSnapshot>()
+                            var deferredCount = 0
 
                             for (profile in profiles) {
                                 try {
@@ -107,23 +113,35 @@ class MinerRelayService : Service() {
                                         val maxFan = stats?.maxFanRpm ?: 0
 
                                         if (rate5s > 0.0 || avgRate > 0.0) {
-                                            snapshots.add(
-                                                RemoteMinerSnapshot(
-                                                    user = config.userName.trim(),
-                                                    // Machine identity = worker name,
-                                                    // not this device's profile UUID
-                                                    // (see MinerMerge).
-                                                    id = profile.workerName.ifBlank { profile.id },
-                                                    nickname = profile.effectiveName,
-                                                    ip = profile.host,
-                                                    hashrate5s = rate5s,
-                                                    avgHashrate = avgRate,
-                                                    maxTemp = maxTemp,
-                                                    maxFan = maxFan,
-                                                    status = "Online",
-                                                    lastUpdated = ""
+                                            // Machine identity = the worker
+                                            // username, resolved before the
+                                            // snapshot exists (see
+                                            // resolveSheetId). A machine whose
+                                            // identity is not known yet is
+                                            // DEFERRED — it is never uploaded
+                                            // under this device's profile UUID,
+                                            // which used to fork one machine
+                                            // into two sheet rows.
+                                            val sheetId = resolveSheetId(profile)
+                                            if (sheetId == null) {
+                                                deferredCount++
+                                            }
+                                            if (sheetId != null) {
+                                                snapshots.add(
+                                                    RemoteMinerSnapshot(
+                                                        user = config.userName.trim(),
+                                                        id = sheetId,
+                                                        nickname = profile.effectiveName,
+                                                        ip = profile.host,
+                                                        hashrate5s = rate5s,
+                                                        avgHashrate = avgRate,
+                                                        maxTemp = maxTemp,
+                                                        maxFan = maxFan,
+                                                        status = "Online",
+                                                        lastUpdated = ""
+                                                    )
                                                 )
-                                            )
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -138,16 +156,30 @@ class MinerRelayService : Service() {
                                 val totalTh = snapshots.sumOf { it.hashrate5s }
 
                                 if (uploadRes.isSuccess) {
+                                    val deferredNote = if (deferredCount > 0) {
+                                        " • $deferredCount deferred (worker name unknown)"
+                                    } else {
+                                        ""
+                                    }
                                     updateNotification(
                                         "⚡ Relay: ${snapshots.size} Miners Active • ${String.format(Locale.US, "%.1f", totalTh)} TH/s",
-                                        "Synced at $now to Google Sheet (${config.userName})"
+                                        "Synced at $now to Google Sheet (${config.userName})$deferredNote"
                                     )
+                                    if (!legacyHealDone) {
+                                        legacyHealDone = true
+                                        healLegacyDuplicates(config, snapshots.map { it.id })
+                                    }
                                 } else {
                                     updateNotification(
                                         "⚠️ Relay Sync Failed",
                                         "${uploadRes.exceptionOrNull()?.message ?: "Check internet connection"}"
                                     )
                                 }
+                            } else if (deferredCount > 0) {
+                                updateNotification(
+                                    "⚡ Relay Standby • Upload Deferred",
+                                    "$deferredCount miner(s) reachable but their worker name is unknown • Nothing uploaded under a device id"
+                                )
                             } else {
                                 updateNotification(
                                     "⚡ Relay Standby • 0 Miners Online",
@@ -162,6 +194,57 @@ class MinerRelayService : Service() {
 
                 delay(30000L) // Poll every 30 seconds in background
             }
+        }
+    }
+
+    /**
+     * The machine's sheet identity: its pool worker username. Taken from
+     * the profile when known; otherwise read from the miner's own pool
+     * config (the same source the dashboard backfills worker names from)
+     * and persisted back onto the stored profile, so the identity is
+     * learned once and every device/install converges on the same sheet
+     * row. Null when the identity cannot be established — the caller
+     * defers the upload rather than substituting the profile UUID.
+     */
+    private suspend fun resolveSheetId(profile: MinerProfile): String? {
+        RelayUpload.sheetIdFor(profile)?.let { return it }
+        val learned = try {
+            readApi.getPools(profile).getOrNull()
+                ?.firstOrNull { it.user.isNotBlank() }?.user
+        } catch (e: Exception) {
+            null
+        }
+        val sheetId = RelayUpload.sheetIdForWorkerName(learned) ?: return null
+        try {
+            val stored = storageManager.loadSavedProfiles()
+            if (stored.any { it.id == profile.id && it.workerName.isBlank() }) {
+                storageManager.saveProfiles(
+                    stored.map { if (it.id == profile.id) it.copy(workerName = sheetId) else it }
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return sheetId
+    }
+
+    /**
+     * One-shot per service start, best-effort: ask the endpoint to drop
+     * this user's legacy duplicate rows — the same machines under old
+     * per-device UUID ids (selection in [RelayUpload.legacyDuplicateIds])
+     * — now that uploads carry the worker identity. Failures (an older
+     * endpoint without delete support) are ignored by design.
+     */
+    private suspend fun healLegacyDuplicates(config: CloudSyncConfig, canonicalIds: List<String>) {
+        try {
+            val fetched = cloudSyncManager.fetchRemoteMiners(config.webhookUrl, config.userName)
+                .getOrNull() ?: return
+            val duplicateIds = RelayUpload.legacyDuplicateIds(fetched.miners, config.userName, canonicalIds)
+            if (duplicateIds.isNotEmpty()) {
+                cloudSyncManager.deleteRemoteRows(config.webhookUrl, config.userName, duplicateIds)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
