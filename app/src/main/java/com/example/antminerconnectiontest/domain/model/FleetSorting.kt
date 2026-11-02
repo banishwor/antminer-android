@@ -71,7 +71,11 @@ object FleetSorting {
     fun workerNameOf(entry: MergedMinerEntry): String {
         entry.localProfile?.workerName?.takeIf { it.isNotBlank() }?.let { return it.trim() }
         val snapshot = entry.remoteSnapshot ?: return ""
-        return MinerMerge.remoteWorkerCandidates(snapshot).firstOrNull().orEmpty()
+        // Never surface a per-device UUID as a "worker name" — rows whose
+        // id is a UUID recover their worker name from the nickname.
+        return MinerMerge.remoteWorkerCandidates(snapshot)
+            .firstOrNull { !MinerMerge.isDeviceId(it) }
+            .orEmpty()
     }
 
     fun rowFor(

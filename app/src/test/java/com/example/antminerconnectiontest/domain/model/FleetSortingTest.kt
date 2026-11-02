@@ -210,4 +210,27 @@ class FleetSortingTest {
         )
         assertEquals("banishwor.001", FleetSorting.workerNameOf(local))
     }
+
+    @Test
+    fun workerNameNeverSurfacesAUuid() {
+        // Regression (v0.1.4): rows relayed before the uploader knew its
+        // worker name carry a per-device UUID in the id field — the
+        // fleet row used to print that UUID as the machine's subtitle.
+        // The worker name is recovered from the nickname instead.
+        val uuidRow = RemoteMinerSnapshot(
+            user = "bishambhor",
+            id = "a998a851-92d0-4bac-8d7e-c59d24d0ed64",
+            nickname = "bishambhor.001 (Antminer S19k Pro)",
+            ip = "192.168.1.20",
+            hashrate5s = 0.0,
+            avgHashrate = 0.0,
+            maxTemp = 60,
+            maxFan = 0,
+            status = "Offline",
+            lastUpdated = (now - dayMs).toString()
+        )
+        val entry = MergedMinerEntry(key = "remote:x", remoteSnapshot = uuidRow)
+
+        assertEquals("bishambhor.001", FleetSorting.workerNameOf(entry))
+    }
 }

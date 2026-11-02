@@ -78,6 +78,21 @@ object MinerMerge {
         val raceHashrates: Map<String, Double> = emptyMap()
     )
 
+    private val UUID_REGEX =
+        Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+    /**
+     * True when [raw] is a per-device / per-install id (a UUID) rather
+     * than a pool worker name. Sheet rows uploaded while the uploader's
+     * profile did not know its worker name yet (uploads use
+     * `workerName.ifBlank { profile.id }`), and rows from older versions,
+     * carry the profile UUID in the `id` field. A UUID names a phone's
+     * saved profile, never the machine — it must not be treated as a
+     * worker identity, and it must never be displayed as one.
+     */
+    fun isDeviceId(raw: String?): Boolean =
+        UUID_REGEX.matches(raw?.trim().orEmpty())
+
     fun normalizeWorkerName(raw: String?): String = raw?.trim()?.lowercase().orEmpty()
 
     /**
@@ -87,8 +102,14 @@ object MinerMerge {
      */
     fun remoteWorkerCandidates(snapshot: RemoteMinerSnapshot): List<String> {
         val out = LinkedHashSet<String>()
-        // Uploads from this app put the machine's worker name in `id`.
-        normalizeWorkerName(snapshot.id).takeIf { it.isNotBlank() }?.let(out::add)
+        // Uploads from this app put the machine's worker name in `id` —
+        // unless the row carries a per-device UUID there (see isDeviceId),
+        // which is not a worker name and must not become a candidate: it
+        // can never equal a profile's worker name, and it used to leak
+        // into the fleet UI as the row's "worker name".
+        if (!isDeviceId(snapshot.id)) {
+            normalizeWorkerName(snapshot.id).takeIf { it.isNotBlank() }?.let(out::add)
+        }
         // Older uploads: nickname is the uploader's effectiveName — the
         // worker name itself, or "workerName (Model)".
         val nick = snapshot.nickname.trim()
@@ -97,6 +118,64 @@ object MinerMerge {
             normalizeWorkerName(nick).takeIf { it.isNotBlank() }?.let(out::add)
         }
         return out.toList()
+    }
+
+    /**
+     * The machine identity a snapshot can prove, normalised, or null when
+     * the row carries no worker identity at all. The `id` field wins when
+     * it holds a worker name; for UUID-id rows the identity is recovered
+     * from the nickname, which is the uploader's `effectiveName`
+     * ("workerName" or "workerName (Model)") — but only when the part
+     * before the model suffix actually looks like a worker name
+     * ("account.worker"), so a free-form user nickname ("Nepra #1") is
+     * never mistaken for an identity.
+     */
+    fun workerIdentity(snapshot: RemoteMinerSnapshot): String? {
+        if (!isDeviceId(snapshot.id)) {
+            normalizeWorkerName(snapshot.id).takeIf { it.isNotBlank() }?.let { return it }
+        }
+        val nickHead = normalizeWorkerName(snapshot.nickname.trim().substringBefore(" ("))
+        return nickHead.takeIf { looksLikeWorkerName(it) }
+    }
+
+    /** Pool worker names are "account.worker" — a dot with both sides non-blank. */
+    private fun looksLikeWorkerName(normalized: String): Boolean {
+        val dot = normalized.indexOf('.')
+        return dot > 0 && dot < normalized.length - 1
+    }
+
+    /**
+     * Collapses sheet rows that describe the same machine into one,
+     * keeping the LATEST snapshot — the sheet can hold several rows per
+     * machine from different relay times and different id forms (worker
+     * name vs per-device UUID), and the newest relay is the truth.
+     * Rows are keyed by worker identity when one is provable, otherwise
+     * by their raw id / row content. First-seen order is preserved.
+     */
+    fun dedupeSnapshots(snapshots: List<RemoteMinerSnapshot>): List<RemoteMinerSnapshot> {
+        val byKey = LinkedHashMap<String, RemoteMinerSnapshot>()
+        for (snapshot in snapshots) {
+            val key = snapshotIdentity(snapshot)
+            val existing = byKey[key]
+            if (existing == null || isAtLeastAsFresh(snapshot, existing)) {
+                byKey[key] = snapshot
+            }
+        }
+        return byKey.values.toList()
+    }
+
+    /**
+     * Latest wins: compares parsed sheet timestamps; a row with no
+     * parseable timestamp is the oldest possible. Ties go to the later
+     * row — the sheet appends newer relays after older ones.
+     */
+    private fun isAtLeastAsFresh(
+        candidate: RemoteMinerSnapshot,
+        existing: RemoteMinerSnapshot
+    ): Boolean {
+        val c = candidate.lastUpdatedEpochMs ?: Long.MIN_VALUE
+        val e = existing.lastUpdatedEpochMs ?: Long.MIN_VALUE
+        return c >= e
     }
 
     /**
@@ -128,13 +207,11 @@ object MinerMerge {
         snapshots: List<RemoteMinerSnapshot>,
         localData: LocalData = LocalData()
     ): List<MergedMinerEntry> {
-        // 1) Drop duplicate sheet rows for the same machine (first wins) so
-        //    a duplicated row can never produce a duplicated entry.
-        val uniqueSnapshots = LinkedHashMap<String, RemoteMinerSnapshot>()
-        for (snapshot in snapshots) {
-            uniqueSnapshots.putIfAbsent(snapshotIdentity(snapshot), snapshot)
-        }
-        val uniqueList = uniqueSnapshots.values.toList()
+        // 1) Drop duplicate sheet rows for the same machine, keeping the
+        //    LATEST relay (see dedupeSnapshots) so a duplicated row can
+        //    never produce a duplicated entry — including duplicates that
+        //    arrive under different id forms (worker name vs UUID).
+        val uniqueList = dedupeSnapshots(snapshots)
 
         val claimedSnapshotIdx = mutableSetOf<Int>()
         val snapshotForProfile = mutableMapOf<String, RemoteMinerSnapshot>()
@@ -203,11 +280,15 @@ object MinerMerge {
 
     /**
      * Identity used to dedupe sheet rows and to key remote-only entries.
-     * The `id` field is stable per machine in practice — it is the worker
-     * name in current uploads and was the uploader's (stable) profile id
-     * in older ones — so identical ids are the same sheet row re-sent.
+     * The worker identity wins when one is provable — that is what makes
+     * the same machine collapse into one entry even when its sheet rows
+     * carry different `id` forms (worker name in current uploads, the
+     * uploader's per-device profile UUID in older/early ones). Rows with
+     * no provable worker identity fall back to their raw id, then to
+     * their row content.
      */
     private fun snapshotIdentity(snapshot: RemoteMinerSnapshot): String {
+        workerIdentity(snapshot)?.let { return "worker:$it" }
         val id = snapshot.id.trim().lowercase()
         return if (id.isNotBlank()) {
             "id:$id"

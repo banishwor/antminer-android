@@ -23,7 +23,8 @@ class MinerMergeTest {
         nickname: String = "Antminer",
         ip: String = "192.168.1.10",
         user: String = "banishwor",
-        hashrate5s: Double = 110.0
+        hashrate5s: Double = 110.0,
+        lastUpdated: String = ""
     ) = RemoteMinerSnapshot(
         user = user,
         id = id,
@@ -34,7 +35,7 @@ class MinerMergeTest {
         maxTemp = 62,
         maxFan = 6000,
         status = "Online",
-        lastUpdated = ""
+        lastUpdated = lastUpdated
     )
 
     @Test
@@ -204,6 +205,122 @@ class MinerMergeTest {
         )
         assertFalse(otherActive[0].hasLiveLocalData)
         assertNull(otherActive[0].localHashrateTh)
+    }
+
+    // --- Regression: the same machine under two id forms (v0.1.4) -------
+    // The user's real sheet holds one machine as TWO rows: a current row
+    // whose id is the worker name, and an older row whose id is the
+    // uploader's per-device profile UUID (uploaded before the profile
+    // knew its worker name), with the worker name only in the nickname
+    // ("banishwor.001 (Antminer S19k Pro)"). Dedupe used to key on the
+    // raw id, so both rows survived; the profile claimed one and the
+    // other appeared as a second, duplicate machine in Home.
+
+    private val uuidA = "a998a851-92d0-4bac-8d7e-c59d24d0ed64"
+    private val uuidB = "b1c2d3e4-1111-4222-8333-444455556666"
+    private val t1 = "1793400000000" // older relay
+    private val t2 = "1793500000000" // newer relay
+
+    @Test
+    fun sameMachineUnderWorkerIdAndUuidIdCollapsesToLatestRow() {
+        val local = profile(id = "p1", workerName = "banishwor.001")
+        val workerRow = snapshot(
+            id = "banishwor.001", nickname = "banishwor.001 (Antminer S19k Pro)",
+            hashrate5s = 90.0, lastUpdated = t1
+        )
+        val uuidRow = snapshot(
+            id = uuidA, nickname = "banishwor.001 (Antminer S19k Pro)",
+            hashrate5s = 121.0, lastUpdated = t2
+        )
+
+        val entries = MinerMerge.merge(listOf(local), listOf(workerRow, uuidRow))
+
+        assertEquals(1, entries.size)
+        assertTrue(entries[0].isMerged)
+        // The LATEST relay is the one kept — not the first row seen.
+        assertEquals(uuidA, entries[0].remoteSnapshot?.id)
+        assertEquals(121.0, entries[0].remoteSnapshot?.hashrate5s!!, 0.001)
+    }
+
+    @Test
+    fun latestRowWinsRegardlessOfSheetOrder() {
+        val local = profile(id = "p1", workerName = "banishwor.001")
+        val workerRow = snapshot(
+            id = "banishwor.001", nickname = "banishwor.001 (Antminer S19k Pro)",
+            hashrate5s = 119.0, lastUpdated = t2
+        )
+        val uuidRow = snapshot(
+            id = uuidA, nickname = "banishwor.001 (Antminer S19k Pro)",
+            hashrate5s = 90.0, lastUpdated = t1
+        )
+
+        // Newest row first this time: the kept snapshot must not change.
+        val entries = MinerMerge.merge(listOf(local), listOf(workerRow, uuidRow))
+
+        assertEquals(1, entries.size)
+        assertTrue(entries[0].isMerged)
+        assertEquals("banishwor.001", entries[0].remoteSnapshot?.id)
+        assertEquals(119.0, entries[0].remoteSnapshot?.hashrate5s!!, 0.001)
+    }
+
+    @Test
+    fun sameMachineRelayedAsTwoDifferentUuidRowsCollapses() {
+        // Two phones/installs relayed the same machine before either knew
+        // to use the worker name as id: two different UUIDs, same worker
+        // name in the nickname.
+        val older = snapshot(
+            id = uuidA, nickname = "bishambhor.001 (Antminer S19k Pro)",
+            user = "bishambhor", hashrate5s = 100.0, lastUpdated = t1
+        )
+        val newer = snapshot(
+            id = uuidB, nickname = "bishambhor.001 (Antminer S19k Pro)",
+            user = "bishambhor", hashrate5s = 118.0, lastUpdated = t2
+        )
+
+        val entries = MinerMerge.merge(emptyList(), listOf(older, newer))
+
+        assertEquals(1, entries.size)
+        assertEquals(uuidB, entries[0].remoteSnapshot?.id)
+        assertEquals(118.0, entries[0].remoteSnapshot?.hashrate5s!!, 0.001)
+    }
+
+    @Test
+    fun differentAccountsWithMixedIdFormsStaySeparate() {
+        // No over-merge: banishwor.001, bishambhor.001 and bani009.001
+        // are three different machines even in mixed id forms.
+        val local = profile(id = "p1", workerName = "banishwor.001")
+        val mine = snapshot(
+            id = uuidA, nickname = "banishwor.001 (Antminer S19k Pro)", lastUpdated = t2
+        )
+        val bish = snapshot(
+            id = uuidB, nickname = "bishambhor.001 (Antminer S19k Pro)",
+            user = "bishambhor", lastUpdated = t2
+        )
+        val bani = snapshot(id = "bani009.001", nickname = "bani009.001", user = "bani009", lastUpdated = t2)
+
+        val entries = MinerMerge.merge(listOf(local), listOf(mine, bish, bani))
+
+        assertEquals(3, entries.size)
+        assertEquals(1, entries.count { it.isMerged })
+        assertEquals("p1", entries.first { it.isMerged }.localProfile?.id)
+        assertEquals(
+            setOf("bishambhor.001", "bani009.001"),
+            entries.filter { it.localProfile == null }
+                .map { MinerMerge.workerIdentity(it.remoteSnapshot!!) }
+                .toSet()
+        )
+    }
+
+    @Test
+    fun uuidIdIsNeverAWorkerCandidate() {
+        val snap = snapshot(id = uuidA, nickname = "bishambhor.001 (Antminer S19k Pro)")
+
+        val candidates = MinerMerge.remoteWorkerCandidates(snap)
+
+        assertFalse(candidates.contains(uuidA))
+        assertEquals("bishambhor.001", candidates.first())
+        assertTrue(MinerMerge.isDeviceId(uuidA))
+        assertFalse(MinerMerge.isDeviceId("banishwor.001"))
     }
 
     @Test

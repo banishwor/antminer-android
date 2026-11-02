@@ -207,7 +207,13 @@ private fun FleetRowItem(
                         text = row.displayName,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        // The name yields first: chips and the hashrate keep
+                        // their full intrinsic width instead of being
+                        // squeezed until their text wraps mid-word.
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     if (row.hasLocal) FleetChip("LOCAL", MaterialTheme.colorScheme.primary)
@@ -223,16 +229,23 @@ private fun FleetRowItem(
                     fontWeight = FontWeight.Bold,
                     fontFamily = dataFont,
                     fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
                     color = if (row.isOnline) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
                 )
             }
 
-            // Pool identity: brand (when known) + worker username.
+            // Pool identity: brand (when known) + worker username. A
+            // per-device UUID is never an identity — remote rows without
+            // a known worker name get a plain label instead.
+            val workerLabel = row.workerName.takeUnless {
+                com.example.antminerconnectiontest.domain.model.MinerMerge.isDeviceId(it)
+            }.orEmpty()
             val poolLine = when {
-                row.workerName.isNotBlank() && row.poolBrand != null -> "${row.poolBrand} · ${row.workerName}"
-                row.workerName.isNotBlank() -> row.workerName
+                workerLabel.isNotBlank() && row.poolBrand != null -> "${row.poolBrand} · $workerLabel"
+                workerLabel.isNotBlank() -> workerLabel
                 entry.localProfile != null -> entry.localProfile.host
-                snapshot != null -> "${snapshot.user} • ${snapshot.ip}"
+                row.isRemoteOnly -> "Remote machine"
                 else -> ""
             }
             if (poolLine.isNotBlank()) {
@@ -298,6 +311,8 @@ private fun FleetChip(label: String, color: androidx.compose.ui.graphics.Color) 
             style = MaterialTheme.typography.labelSmall,
             fontSize = 8.sp,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
             color = color,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
         )
