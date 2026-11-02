@@ -262,19 +262,10 @@ private fun FleetRowItem(
                 }
             }
 
-            // Pool identity: brand (when known) + worker username. A
-            // per-device UUID is never an identity — remote rows without
-            // a known worker name get a plain label instead.
-            val workerLabel = row.workerName.takeUnless {
-                com.example.antminerconnectiontest.domain.model.MinerMerge.isDeviceId(it)
-            }.orEmpty()
-            val poolLine = when {
-                workerLabel.isNotBlank() && row.poolBrand != null -> "${row.poolBrand} · $workerLabel"
-                workerLabel.isNotBlank() -> workerLabel
-                entry.localProfile != null -> entry.localProfile.host
-                row.isRemoteOnly -> "Remote machine"
-                else -> ""
-            }
+            // Pool identity line (see FleetSorting.rowSubtitle): brand
+            // + worker username normally — but never a repeat of the
+            // title when the title already is the worker identity.
+            val poolLine = FleetSorting.rowSubtitle(row)
             if (poolLine.isNotBlank()) {
                 Text(
                     text = poolLine,

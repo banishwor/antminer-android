@@ -233,4 +233,88 @@ class FleetSortingTest {
 
         assertEquals("bishambhor.001", FleetSorting.workerNameOf(entry))
     }
+
+    // --- Row subtitle (v0.1.8: never repeat the title) --------------------
+
+    @Test
+    fun subtitleDoesNotRepeatWorkerIdentityTitle() {
+        // Uploads carry the worker identity in the nickname field, so an
+        // un-nicknamed remote machine's title IS its worker name — the
+        // subtitle must identify it by owner / IP instead of repeating.
+        val snap = RemoteMinerSnapshot(
+            user = "bishambhor",
+            id = "bishambhor.001",
+            nickname = "bishambhor.001",
+            ip = "192.168.1.20",
+            hashrate5s = 100.0,
+            avgHashrate = 100.0,
+            maxTemp = 67,
+            maxFan = 4300,
+            status = "Online",
+            lastUpdated = now.toString(),
+            model = "Antminer S19k Pro"
+        )
+        val entry = MergedMinerEntry(key = "remote:x", remoteSnapshot = snap)
+        val row = FleetSorting.rowFor(entry, now)
+        assertEquals("bishambhor.001", row.displayName)
+        assertEquals(
+            "bishambhor · 192.168.1.20 · Antminer S19k Pro",
+            FleetSorting.rowSubtitle(row)
+        )
+    }
+
+    @Test
+    fun subtitleIsBlankWhenTitleIsWorkerAndNothingElseKnown() {
+        val snap = RemoteMinerSnapshot(
+            user = "",
+            id = "banishwor.002",
+            nickname = "banishwor.002",
+            ip = "",
+            hashrate5s = 0.0,
+            avgHashrate = 0.0,
+            maxTemp = 0,
+            maxFan = 0,
+            status = "Offline",
+            lastUpdated = ""
+        )
+        val entry = MergedMinerEntry(key = "remote:x", remoteSnapshot = snap)
+        val row = FleetSorting.rowFor(entry, now)
+        assertEquals("", FleetSorting.rowSubtitle(row))
+    }
+
+    @Test
+    fun subtitleKeepsWorkerUnderRealNickname() {
+        // A (phone / profile) nickname as the title: the worker identity
+        // stays on the subtitle line, brand first when known.
+        val snap = RemoteMinerSnapshot(
+            user = "banishwor",
+            id = "banishwor.001",
+            nickname = "banishwor.001",
+            ip = "192.168.1.2",
+            hashrate5s = 110.0,
+            avgHashrate = 110.0,
+            maxTemp = 62,
+            maxFan = 4200,
+            status = "Online",
+            lastUpdated = now.toString()
+        )
+        val entry = MergedMinerEntry(
+            key = "remote:x",
+            remoteSnapshot = snap,
+            phoneDisplayName = "Hall 1, Left"
+        )
+        val row = FleetSorting.rowFor(entry, now, poolBrand = "ViaBTC")
+        assertEquals("Hall 1, Left", row.displayName)
+        assertEquals("ViaBTC · banishwor.001", FleetSorting.rowSubtitle(row))
+    }
+
+    @Test
+    fun subtitleForLocalRowWithoutWorkerFallsBackToHost() {
+        val entry = MergedMinerEntry(
+            key = "local:1",
+            localProfile = profile("1")
+        )
+        val row = FleetSorting.rowFor(entry, now)
+        assertEquals("192.168.1.10", FleetSorting.rowSubtitle(row))
+    }
 }

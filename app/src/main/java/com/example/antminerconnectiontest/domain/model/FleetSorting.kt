@@ -78,6 +78,50 @@ object FleetSorting {
             .orEmpty()
     }
 
+    /**
+     * The fleet row's second line (pool identity). Normally the pool
+     * worker username, prefixed by the pool brand when known.
+     *
+     * One exception (v0.1.8): when the row's TITLE already is the
+     * worker identity — the common case now that uploads carry the
+     * identity in the sheet's nickname field, so an un-nicknamed
+     * machine's display name IS its worker name — repeating the same
+     * string on the subtitle line is noise. The line then identifies
+     * the machine by owner user / IP / model instead (whichever are
+     * known, title excluded, duplicates collapsed), and is blank when
+     * none of them are known. A row with a real nickname (title ≠
+     * worker identity) keeps the worker name on this line, as before.
+     */
+    fun rowSubtitle(row: FleetRow): String {
+        val entry = row.entry
+        val workerLabel = row.workerName
+            .takeUnless { MinerMerge.isDeviceId(it) }
+            .orEmpty()
+        val title = row.displayName.trim()
+        val titleIsWorkerIdentity = workerLabel.isNotBlank() &&
+            title.equals(workerLabel, ignoreCase = true)
+        if (!titleIsWorkerIdentity) {
+            return when {
+                workerLabel.isNotBlank() && row.poolBrand != null -> "${row.poolBrand} · $workerLabel"
+                workerLabel.isNotBlank() -> workerLabel
+                entry.localProfile != null -> entry.localProfile.host
+                row.isRemoteOnly -> "Remote machine"
+                else -> ""
+            }
+        }
+        val parts = listOfNotNull(
+            row.poolBrand,
+            entry.remoteSnapshot?.user?.takeIf { it.isNotBlank() },
+            entry.remoteSnapshot?.ip?.takeIf { it.isNotBlank() }
+                ?: entry.localProfile?.host?.takeIf { it.isNotBlank() },
+            entry.remoteSnapshot?.model?.takeIf { it.isNotBlank() }
+                ?: entry.localProfile?.cachedModel?.takeIf { it.isNotBlank() }
+        ).map { it.trim() }
+            .filter { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
+            .distinctBy { it.lowercase() }
+        return parts.joinToString(" · ")
+    }
+
     fun rowFor(
         entry: MergedMinerEntry,
         nowMs: Long,
