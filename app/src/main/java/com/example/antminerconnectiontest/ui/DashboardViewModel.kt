@@ -380,7 +380,12 @@ class DashboardViewModel(
                     val maxFan = if (isActive && isLocalOnline) currentData?.stats?.maxFanRpm ?: 0 else 0
                     RemoteMinerSnapshot(
                         user = cfg.userName.trim(),
-                        id = profile.id,
+                        // The sheet row's id is the MACHINE's identity, not
+                        // this phone's: the worker name (pool username) is
+                        // the same on every device and install, while the
+                        // profile UUID is per-device — remote viewers match
+                        // rows to local profiles by it (see MinerMerge).
+                        id = profile.workerName.ifBlank { profile.id },
                         nickname = profile.effectiveName,
                         ip = profile.host,
                         hashrate5s = rate5s,

@@ -110,7 +110,10 @@ class MinerRelayService : Service() {
                                             snapshots.add(
                                                 RemoteMinerSnapshot(
                                                     user = config.userName.trim(),
-                                                    id = profile.id,
+                                                    // Machine identity = worker name,
+                                                    // not this device's profile UUID
+                                                    // (see MinerMerge).
+                                                    id = profile.workerName.ifBlank { profile.id },
                                                     nickname = profile.effectiveName,
                                                     ip = profile.host,
                                                     hashrate5s = rate5s,
