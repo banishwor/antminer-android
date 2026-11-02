@@ -169,10 +169,11 @@ class MinerStorageManager(context: Context) {
     }
 
     /**
-     * The user's first-open start choice ("REMOTE" / "SCAN"), or null when
-     * they have never been asked. Persisted so the choice is only asked
-     * once — afterwards the app opens in the mode they picked (and both
-     * modes stay reachable from inside).
+     * LEGACY (pre-v0.1.9): the first-open start choice older versions
+     * persisted under [KEY_START_CHOICE]. v0.1.9 removed the start fork
+     * — there is one shell for everyone — so nothing reads this value
+     * anymore; a stored choice from an older install is simply ignored.
+     * The loader stays only so a future migration could inspect it.
      */
     fun loadStartChoice(): String? {
         return prefs.getString(KEY_START_CHOICE, null)

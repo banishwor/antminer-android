@@ -10,10 +10,16 @@ import com.example.antminerconnectiontest.MainActivity
 import com.example.antminerconnectiontest.data.api.AntminerReadApiImpl
 import com.example.antminerconnectiontest.data.api.MinerReadApi
 import com.example.antminerconnectiontest.data.cloud.CloudSyncManager
+import com.example.antminerconnectiontest.data.scanner.AntminerDetector
+import com.example.antminerconnectiontest.data.scanner.DiscoveryStatus
 import com.example.antminerconnectiontest.data.storage.MinerStorageManager
+import com.example.antminerconnectiontest.domain.model.AutoConnect
+import com.example.antminerconnectiontest.domain.model.AutoConnectCandidate
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
+import com.example.antminerconnectiontest.domain.model.MinerMerge
 import com.example.antminerconnectiontest.domain.model.MinerPool
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.ProbeClass
 import com.example.antminerconnectiontest.domain.model.RelayUpload
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.domain.model.withTelemetry
@@ -30,6 +36,7 @@ class MinerRelayService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val cloudSyncManager = CloudSyncManager()
     private val readApi: MinerReadApi = AntminerReadApiImpl()
+    private val detector = AntminerDetector()
     private lateinit var storageManager: MinerStorageManager
     private var syncJob: Job? = null
     /** Legacy-duplicate healing runs once per service start (best-effort). */
@@ -93,6 +100,20 @@ class MinerRelayService : Service() {
                                 "Paused upload • Wi-Fi connection required for local miners"
                             )
                         } else {
+                            // Fetch the fleet first (v0.1.9): it feeds
+                            // the background auto-connect candidate set
+                            // and the cross-user upload guard below.
+                            val fleet = cloudSyncManager.fetchRemoteMiners(config.webhookUrl, config.userName)
+                                .getOrNull()?.miners ?: emptyList()
+
+                            // Background auto-connect: a phone that has
+                            // never saved a local profile still connects
+                            // to the fleet's known miners on this Wi-Fi
+                            // with the app closed. Newly verified
+                            // machines are saved, then polled + uploaded
+                            // by the normal loop below in the same cycle.
+                            backgroundAutoConnect(fleet)
+
                             val profiles = storageManager.loadSavedProfiles()
                             val snapshots = mutableListOf<RemoteMinerSnapshot>()
                             var deferredCount = 0
@@ -167,11 +188,19 @@ class MinerRelayService : Service() {
                                 }
                             }
 
-                            if (snapshots.isNotEmpty()) {
-                                val uploadRes = cloudSyncManager.uploadLocalMiners(config.webhookUrl, config.userName, snapshots)
+                            // Cross-user guard (v0.1.9): machines whose
+                            // sheet row belongs to another relay user —
+                            // auto-connected while visiting their site —
+                            // are polled and shown locally but never
+                            // re-uploaded under this user's name.
+                            val uploadable = RelayUpload.filterUploadable(snapshots, config.userName, fleet)
+                            val guardedCount = snapshots.size - uploadable.size
+
+                            if (uploadable.isNotEmpty()) {
+                                val uploadRes = cloudSyncManager.uploadLocalMiners(config.webhookUrl, config.userName, uploadable)
                                 val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                                 val now = sdf.format(Date())
-                                val totalTh = snapshots.sumOf { it.hashrate5s }
+                                val totalTh = uploadable.sumOf { it.hashrate5s }
 
                                 if (uploadRes.isSuccess) {
                                     val deferredNote = if (deferredCount > 0) {
@@ -179,13 +208,18 @@ class MinerRelayService : Service() {
                                     } else {
                                         ""
                                     }
+                                    val guardNote = if (guardedCount > 0) {
+                                        " • $guardedCount local-only (another user's machines)"
+                                    } else {
+                                        ""
+                                    }
                                     updateNotification(
-                                        "⚡ Relay: ${snapshots.size} Miners Active • ${String.format(Locale.US, "%.1f", totalTh)} TH/s",
-                                        "Synced at $now to Google Sheet (${config.userName})$deferredNote"
+                                        "⚡ Relay: ${uploadable.size} Miners Active • ${String.format(Locale.US, "%.1f", totalTh)} TH/s",
+                                        "Synced at $now to Google Sheet (${config.userName})$deferredNote$guardNote"
                                     )
                                     if (!legacyHealDone) {
                                         legacyHealDone = true
-                                        healLegacyDuplicates(config, snapshots.map { it.id })
+                                        healLegacyDuplicates(config, uploadable.map { it.id }, fleet)
                                     }
                                 } else {
                                     updateNotification(
@@ -193,6 +227,11 @@ class MinerRelayService : Service() {
                                         "${uploadRes.exceptionOrNull()?.message ?: "Check internet connection"}"
                                     )
                                 }
+                            } else if (guardedCount > 0) {
+                                updateNotification(
+                                    "⚡ Relay Standby • Local Only",
+                                    "$guardedCount machine(s) on this Wi-Fi belong to another relay user • Shown locally, not uploaded"
+                                )
                             } else if (deferredCount > 0) {
                                 updateNotification(
                                     "⚡ Relay Standby • Upload Deferred",
@@ -250,17 +289,105 @@ class MinerRelayService : Service() {
     }
 
     /**
+     * Background auto-connect (v0.1.9): the same known-miner pass the
+     * foreground ViewModel runs, so a phone that has never saved a local
+     * profile still connects when it joins a site Wi-Fi with the app
+     * closed. Only fleet machines WITHOUT a saved profile are probed
+     * here — saved profiles are already polled by the relay loop itself
+     * (with identity resolution via [resolveSheetId]), so probing them
+     * again would only double the traffic. Verified machines are
+     * appended to the stored profiles (credentials encrypted at rest by
+     * MinerStorageManager, never uploaded), and the loop that follows
+     * polls and uploads them in the same cycle, subject to the
+     * cross-user guard. Machines that reject the default credentials
+     * are skipped here — the foreground pass surfaces them as
+     * "needs password" cards when the app is opened.
+     */
+    private suspend fun backgroundAutoConnect(fleet: List<RemoteMinerSnapshot>) {
+        if (fleet.isEmpty()) return
+        try {
+            val stored = storageManager.loadSavedProfiles().toMutableList()
+            val candidates = AutoConnect.buildCandidates(stored, fleet)
+            val knownIdentities = candidates.mapNotNull {
+                it.identity.takeIf { id -> id.isNotBlank() }
+            }.toSet()
+            var changed = false
+
+            for (candidate in candidates) {
+                if (candidate.savedProfile != null) continue
+                for (ip in candidate.probeIps) {
+                    val result = detector.verifyMinerWithCredentials(
+                        ip, AutoConnect.DEFAULT_USERNAME, AutoConnect.DEFAULT_PASSWORD
+                    )
+                    if (!result.isConfirmed) {
+                        val signature = detector.detectSignature(ip)
+                        if (signature == DiscoveryStatus.OFFLINE) continue // try alternate IP
+                        break // Something answered (auth or not a miner) — next candidate.
+                    }
+                    when (AutoConnect.classify(candidate, result.workerName, knownIdentities)) {
+                        ProbeClass.MATCH -> {
+                            stored += profileFor(candidate, ip, result)
+                            changed = true
+                        }
+                        ProbeClass.DIFFERENT_KNOWN_MACHINE -> {
+                            // A different known fleet machine lives at
+                            // this IP now: claim it here instead, unless
+                            // it was saved in the meantime.
+                            val resolvedNorm = MinerMerge.normalizeWorkerName(result.workerName)
+                            val other = candidates.firstOrNull { it.identity == resolvedNorm }
+                            if (other != null && stored.none { MinerMerge.normalizeWorkerName(it.workerName) == resolvedNorm }) {
+                                stored += profileFor(other, ip, result)
+                                changed = true
+                            }
+                        }
+                        else -> Unit // Unknown / unverified / needs password: never added from the background.
+                    }
+                    break
+                }
+            }
+
+            if (changed) {
+                storageManager.saveProfiles(stored)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /** Builds the saved profile for a fleet machine an auto-connect probe verified. */
+    private fun profileFor(
+        candidate: AutoConnectCandidate,
+        ip: String,
+        result: com.example.antminerconnectiontest.data.scanner.MinerVerificationResult
+    ): MinerProfile = MinerProfile(
+        workerName = result.workerName?.trim().orEmpty().ifBlank { candidate.identityRaw },
+        macAddress = result.macAddress.orEmpty(),
+        displayName = result.modelName
+            ?: candidate.snapshot?.model?.ifBlank { null }
+            ?: "Antminer",
+        host = ip,
+        username = AutoConnect.DEFAULT_USERNAME,
+        password = result.effectivePassword,
+        cachedModel = result.modelName ?: candidate.snapshot?.model?.ifBlank { null }
+    )
+
+    /**
      * One-shot per service start, best-effort: ask the endpoint to drop
      * this user's legacy duplicate rows — the same machines under old
      * per-device UUID ids (selection in [RelayUpload.legacyDuplicateIds])
      * — now that uploads carry the worker identity. Failures (an older
-     * endpoint without delete support) are ignored by design.
+     * endpoint without delete support) are ignored by design. The fleet
+     * fetched at the top of the cycle is reused; when it is empty
+     * (fetch failed) the heal is skipped this start.
      */
-    private suspend fun healLegacyDuplicates(config: CloudSyncConfig, canonicalIds: List<String>) {
+    private suspend fun healLegacyDuplicates(
+        config: CloudSyncConfig,
+        canonicalIds: List<String>,
+        fleet: List<RemoteMinerSnapshot>
+    ) {
         try {
-            val fetched = cloudSyncManager.fetchRemoteMiners(config.webhookUrl, config.userName)
-                .getOrNull() ?: return
-            val duplicateIds = RelayUpload.legacyDuplicateIds(fetched.miners, config.userName, canonicalIds)
+            if (fleet.isEmpty()) return
+            val duplicateIds = RelayUpload.legacyDuplicateIds(fleet, config.userName, canonicalIds)
             if (duplicateIds.isNotEmpty()) {
                 cloudSyncManager.deleteRemoteRows(config.webhookUrl, config.userName, duplicateIds)
             }
