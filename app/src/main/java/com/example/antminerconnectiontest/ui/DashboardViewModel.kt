@@ -201,7 +201,11 @@ class DashboardViewModel(
             profiles = profiles,
             // The selected snapshot takes part in the merge even if a sync
             // cycle has not (or no longer) listed it — MinerMerge dedupes.
-            snapshots = remoteSnapshots + listOfNotNull(selectedSnapshot),
+            // It is listed FIRST: dedupe keeps the freshest copy per
+            // machine and breaks timestamp ties toward the later entry,
+            // so a freshly fetched fleet row must come after the
+            // selection-time copy to win those ties (v0.2.1).
+            snapshots = listOfNotNull(selectedSnapshot) + remoteSnapshots,
             localData = MinerMerge.LocalData(
                 activeProfileId = active?.id,
                 activeDataProfileId = data?.profileId,
@@ -468,7 +472,41 @@ class DashboardViewModel(
         viewModelScope.launch {
             mergedMiners.collect { entries ->
                 applyDefaultSelection(entries)
+                refreshSelectedSnapshot(entries)
             }
+        }
+    }
+
+    /**
+     * Keeps the remote SELECTION in step with the fleet (v0.2.1 fix).
+     *
+     * The selection used to be a snapshot copy frozen at tap time: cloud
+     * sync refreshed [AppUiState.remoteMiners] — and with it the merged
+     * fleet the list renders — but nothing ever updated the stored
+     * selection, so the Home hero (and the tabs) kept showing
+     * selection-time values until the user tapped the machine's row
+     * again to re-select it. Here the selection is re-derived from the
+     * SAME merged fleet state the list uses: whenever an entry for the
+     * selected machine carries a different snapshot, the selection
+     * adopts it — on resume refreshes, sync cycles and live polls alike,
+     * with no tap needed.
+     *
+     * If the machine is absent from the fleet (a sync cycle no longer
+     * lists it), the selection keeps its last known copy, as before.
+     * The equality guard keeps this from looping: adopting the merged
+     * copy re-emits the fleet once, after which the entry's snapshot
+     * equals the selection and no further update happens.
+     */
+    internal fun refreshSelectedSnapshot(entries: List<MergedMinerEntry>) {
+        val selected = _uiState.value.selectedRemoteMiner ?: return
+        val fresh = entries.firstOrNull { it.remoteSnapshot?.id == selected.id }
+            ?.remoteSnapshot ?: return
+        if (fresh == selected) return
+        _uiState.update { state ->
+            // Re-check inside the update: the selection may have been
+            // changed or cleared since this fleet emission was read.
+            if (state.selectedRemoteMiner?.id != selected.id) state
+            else state.copy(selectedRemoteMiner = fresh)
         }
     }
 
@@ -1451,8 +1489,24 @@ class DashboardViewModel(
      * if there is no data yet, the last refresh failed, or the data is older
      * than ~2 poll cycles — previously the app just showed whatever stale
      * state it had when the phone slept.
+     *
+     * v0.2.1: the cloud side is covered too. A REMOTE selection has no
+     * local profile to poll — its data is the relay snapshot — and the
+     * old early return (no active profile → nothing) meant resume never
+     * re-fetched it; the hero then sat on its selection-time copy until
+     * the machine's row was tapped. Now a stale (or never-run) cloud
+     * sync is re-triggered on resume regardless of the local profile,
+     * and the arriving fleet refresh re-derives the selection (see
+     * [refreshSelectedSnapshot]). [syncCloudNow] no-ops when cloud
+     * viewing is not configured.
      */
     fun refreshIfStale() {
+        val lastSync = _uiState.value.lastCloudSyncTimestamp
+        val cloudStale = lastSync == null ||
+            System.currentTimeMillis() - lastSync > 30_000L
+        if (cloudStale) {
+            syncCloudNow()
+        }
         if (_uiState.value.activeProfile == null) return
         val data = _uiState.value.dashboardData
         val isStale = data == null ||
