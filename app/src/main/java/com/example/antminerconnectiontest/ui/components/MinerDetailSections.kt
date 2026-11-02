@@ -64,7 +64,7 @@ data class MinerDetailUi(
     val displayName: String,
     /** Model • firmware line, blank when neither is known. */
     val modelLine: String,
-    /** "Cloud Owner: X • ip" for remote, "host • location" for local. */
+    /** "ip • Owner: X" for a snapshot, "host • location" for local — one plain subtitle style for both (v0.1.9). */
     val subLine: String,
     val isRemote: Boolean,
     val isOnline: Boolean,
@@ -103,7 +103,7 @@ fun RemoteMinerSnapshot.toMinerDetailUi(displayName: String): MinerDetailUi {
     return MinerDetailUi(
         displayName = displayName,
         modelLine = listOf(model, firmware).filter { it.isNotBlank() }.joinToString(" • "),
-        subLine = "Cloud Owner: $user • $ip",
+        subLine = "$ip • Owner: $user",
         isRemote = true,
         isOnline = !isStale && effectiveHashrate5s > 0.0,
         isStale = isStale,
@@ -221,7 +221,10 @@ fun MinerDetailContent(
             avgRate = detail.avgHashrateTh,
             idealRate = detail.idealHashrateTh ?: 120.0,
             isOnline = detail.isOnline,
-            isCloudMode = detail.isRemote,
+            // One hero for LIVE and REMOTE alike (v0.1.9): the source is
+            // told by the header's REMOTE chip + "last updated" line,
+            // not by a separate cyan cloud theme.
+            isCloudMode = false,
             isStaleCloud = detail.isStale
         )
 
@@ -452,7 +455,6 @@ fun MinerDetailHeader(
         border = CardDefaults.outlinedCardBorder().copy(
             brush = SolidColor(
                 if (detail.isStale) MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                else if (detail.isRemote) CyberCyan.copy(alpha = 0.6f)
                 else MaterialTheme.colorScheme.outline
             )
         ),
@@ -475,7 +477,6 @@ fun MinerDetailHeader(
                         .clip(CircleShape)
                         .background(
                             if (detail.isStale) MaterialTheme.colorScheme.error
-                            else if (detail.isRemote) CyberCyan
                             else if (detail.isOnline) AntminerEmerald
                             else MaterialTheme.colorScheme.error
                         )
@@ -491,14 +492,17 @@ fun MinerDetailHeader(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
-                            color = if (detail.isRemote) CyberCyan.copy(alpha = 0.15f) else AntminerEmerald.copy(alpha = 0.15f),
+                            // The REMOTE chip is the one allowed source
+                            // marker (v0.1.9): neutral styling, same
+                            // shape as LIVE — no separate cloud theme.
+                            color = if (detail.isRemote) MaterialTheme.colorScheme.surfaceVariant else AntminerEmerald.copy(alpha = 0.15f),
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
                                 text = if (detail.isRemote) "REMOTE" else "LIVE",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (detail.isRemote) CyberCyan else AntminerEmerald,
+                                color = if (detail.isRemote) MaterialTheme.colorScheme.onSurfaceVariant else AntminerEmerald,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -520,7 +524,7 @@ fun MinerDetailHeader(
                         text = detail.subLine,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = LocalDataFontFamily.current,
-                        color = if (detail.isRemote) CyberCyan else MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary
                     )
                     if (detail.modelLine.isNotBlank()) {
                         Text(

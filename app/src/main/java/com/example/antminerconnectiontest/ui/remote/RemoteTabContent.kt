@@ -28,14 +28,14 @@ import com.example.antminerconnectiontest.ui.components.MinerDetailUi
 import com.example.antminerconnectiontest.ui.components.UnavailableSection
 
 /**
- * Tab contents of the main shell when no local miner is active
- * (v0.1.8): the Hardware / Pools / Logs tabs for a user who started
- * remote. They are never dead ends and never fabricate data — a tab
- * either renders what the selected miner's relay snapshot honestly
- * carries (the same section composables the unified detail uses), or
- * a placeholder that names the selected miner and says the tab is
- * fully available on location. With no miner selected, the tab points
- * back to the Home fleet list.
+ * Tab contents of the main shell when no local miner is active: the
+ * Hardware / Pools / Logs tabs for the selected fleet machine when it
+ * exists only as a cloud snapshot. They are never dead ends and never
+ * fabricate data — a tab either renders what the selected miner's
+ * relay snapshot honestly carries (the same section composables the
+ * unified detail uses), or a placeholder that names the selected miner
+ * and says the tab is fully available on location. With no miner
+ * selected, the tab points back to the Home fleet list.
  */
 
 @Composable

@@ -41,8 +41,8 @@ import com.example.antminerconnectiontest.ui.SetupFormState
 fun SetupScreen(
     viewModel: DashboardViewModel,
     uiState: AppUiState,
-    /** Non-null when a Remote View user opened setup to add a local miner:
-     *  shows a way back to Remote View. Null in the normal first-run flow. */
+    /** Shows a way back to the main shell's Home. Always set since
+     *  v0.1.9 — setup is only ever entered from inside the shell. */
     onExitSetup: (() -> Unit)? = null
 ) {
     val form = uiState.setupForm
@@ -54,9 +54,9 @@ fun SetupScreen(
     var isBatchPasswordVisible by remember { mutableStateOf(false) }
 
     // NO auto-scan on open: a subnet scan only starts from an explicit
-    // user action — the first-open "Start scan" choice, or the Start Scan
-    // button below. (This screen used to fire a scan from a LaunchedEffect
-    // the moment it composed on Wi-Fi.)
+    // user action — the Start Scan button below. (Auto-connect of KNOWN
+    // miners is not a scan and lives elsewhere; this screen used to fire
+    // a scan from a LaunchedEffect the moment it composed on Wi-Fi.)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -118,7 +118,7 @@ fun SetupScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Back to Remote View (only for remote starters adding a local miner)
+            // Back to Home (setup is a flow inside the one shell)
             if (onExitSetup != null) {
                 TextButton(
                     onClick = onExitSetup,
@@ -127,7 +127,7 @@ fun SetupScreen(
                 ) {
                     Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Back to Remote View", fontWeight = FontWeight.Bold)
+                    Text("Back to Home", fontWeight = FontWeight.Bold)
                 }
             }
 
