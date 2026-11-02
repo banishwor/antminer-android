@@ -351,6 +351,96 @@ class DashboardViewModelTest {
         assertEquals("banishwor.001", entries[0].remoteSnapshot?.id)
     }
 
+    // ── v0.2.1 regression: the hero must follow the fleet, not the tap ──
+    //
+    // The bug: the remote selection was a snapshot copy frozen at
+    // selection time. Cloud sync refreshed the fleet list, but the hero
+    // kept showing the old copy ("Updated 11m ago · signal lost",
+    // hashrate "--", OFFLINE) until the user tapped the machine's row
+    // again. refreshSelectedSnapshot re-derives the selection from the
+    // merged fleet — the same state the list renders.
+
+    private fun baniSnapshot(hashrate: Double, status: String, updated: String) =
+        com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot(
+            user = "Tompokchao",
+            id = "bani009.201",
+            nickname = "bani009.201",
+            ip = "192.168.1.30",
+            hashrate5s = hashrate,
+            avgHashrate = hashrate,
+            maxTemp = 62,
+            maxFan = 6000,
+            status = status,
+            lastUpdated = updated
+        )
+
+    @Test
+    fun refreshSelectedSnapshot_fresherFleetCopy_updatesSelectionWithoutReselect() {
+        val viewModel = DashboardViewModel()
+        // Selection-time copy: stale, miner shown offline with no rate.
+        val stale = baniSnapshot(hashrate = 0.0, status = "Offline", updated = "2026-11-02T16:59:00")
+        viewModel.selectRemoteMiner(stale)
+        assertEquals(stale, viewModel.uiState.value.selectedRemoteMiner)
+
+        // A sync cycle lands a fresher copy of the SAME machine in the
+        // merged fleet (what the fleet list renders).
+        val fresh = baniSnapshot(hashrate = 122.8, status = "Online", updated = "2026-11-02T17:10:00")
+        val entries = listOf(
+            com.example.antminerconnectiontest.domain.model.MergedMinerEntry(
+                key = "remote:bani009.201",
+                remoteSnapshot = fresh
+            )
+        )
+        viewModel.refreshSelectedSnapshot(entries)
+
+        // The hero state (the stored selection the hero derives from)
+        // now reflects the fresh values — no re-selection happened.
+        val selected = viewModel.uiState.value.selectedRemoteMiner
+        assertEquals(fresh, selected)
+        assertEquals(122.8, selected!!.hashrate5s, 0.001)
+        assertEquals("Online", selected.status)
+        assertEquals("2026-11-02T17:10:00", selected.lastUpdated)
+    }
+
+    @Test
+    fun refreshSelectedSnapshot_machineAbsentFromFleet_keepsLastKnownSelection() {
+        val viewModel = DashboardViewModel()
+        val stale = baniSnapshot(hashrate = 0.0, status = "Offline", updated = "2026-11-02T16:59:00")
+        viewModel.selectRemoteMiner(stale)
+
+        // The fleet no longer lists the machine: the selection keeps
+        // its last known copy instead of being cleared or swapped.
+        val other = baniSnapshot(hashrate = 50.0, status = "Online", updated = "2026-11-02T17:10:00")
+            .copy(id = "bani009.202")
+        viewModel.refreshSelectedSnapshot(
+            listOf(
+                com.example.antminerconnectiontest.domain.model.MergedMinerEntry(
+                    key = "remote:bani009.202",
+                    remoteSnapshot = other
+                )
+            )
+        )
+        assertEquals(stale, viewModel.uiState.value.selectedRemoteMiner)
+    }
+
+    @Test
+    fun refreshSelectedSnapshot_sameSnapshot_leavesSelectionUntouched() {
+        val viewModel = DashboardViewModel()
+        val current = baniSnapshot(hashrate = 122.8, status = "Online", updated = "2026-11-02T17:10:00")
+        viewModel.selectRemoteMiner(current)
+
+        viewModel.refreshSelectedSnapshot(
+            listOf(
+                com.example.antminerconnectiontest.domain.model.MergedMinerEntry(
+                    key = "remote:bani009.201",
+                    remoteSnapshot = current
+                )
+            )
+        )
+        // No state churn when the fleet copy already equals the selection.
+        assertSame(current, viewModel.uiState.value.selectedRemoteMiner)
+    }
+
     @Test
     fun openDiscoveredMiner_updatesHostIfIpChanged() {
         val viewModel = DashboardViewModel()
