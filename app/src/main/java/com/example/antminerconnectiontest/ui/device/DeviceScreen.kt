@@ -51,7 +51,19 @@ fun DeviceScreen(
     isCheckingForUpdate: Boolean = false,
     onCheckForUpdates: () -> Unit = {},
     onAddNewMiner: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    // Selected-machine identity (v0.2.0): when the fleet selection is a
+    // machine other than the active local profile (typically a cloud
+    // machine), a compact identity card follows the selection here.
+    // Null name = the selection IS the active profile, whose full
+    // identity cards already render below.
+    selectedMachineName: String? = null,
+    selectedMachineWorker: String = "",
+    selectedMachineModel: String = "",
+    selectedMachineFirmware: String = "",
+    selectedMachineSerial: String = "",
+    selectedMachineIp: String = "",
+    selectedMachineIsRemote: Boolean = false
 ) {
     val sys = data?.systemInfo
     var isMacMasked by remember { mutableStateOf(false) }
@@ -97,6 +109,47 @@ fun DeviceScreen(
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
                 } else {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        // Selected-machine identity card (v0.2.0) — follows the fleet
+        // selection when it isn't the active local profile.
+        if (selectedMachineName != null) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = selectedMachineName,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (selectedMachineWorker.isNotBlank() &&
+                                !selectedMachineWorker.equals(selectedMachineName, ignoreCase = true)
+                            ) {
+                                Text(
+                                    text = selectedMachineWorker,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        com.example.antminerconnectiontest.ui.components.SourceChip(isRemote = selectedMachineIsRemote)
+                    }
+                    if (selectedMachineModel.isNotBlank()) DeviceInfoRow("Miner Model", selectedMachineModel)
+                    if (selectedMachineFirmware.isNotBlank()) DeviceInfoRow("Firmware", selectedMachineFirmware)
+                    if (selectedMachineSerial.isNotBlank()) DeviceInfoRow("Serial Number", selectedMachineSerial)
+                    if (selectedMachineIp.isNotBlank()) DeviceInfoRow("IP Address", selectedMachineIp)
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.example.antminerconnectiontest.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -20,8 +21,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.PhoneNicknames
 import com.example.antminerconnectiontest.theme.*
+import com.example.antminerconnectiontest.ui.components.MinerDetailUi
 import com.example.antminerconnectiontest.ui.components.MinerSwitcherBottomSheet
 import com.example.antminerconnectiontest.ui.components.NicknameEditDialog
+import com.example.antminerconnectiontest.ui.components.SelectedMachineHeader
+import com.example.antminerconnectiontest.ui.components.localMinerDetailUi
 import com.example.antminerconnectiontest.ui.components.toMinerDetailUi
 import com.example.antminerconnectiontest.ui.device.DeviceScreen
 import com.example.antminerconnectiontest.ui.hardware.HardwareScreen
@@ -32,6 +36,36 @@ import com.example.antminerconnectiontest.ui.remote.RemoteHardwareTab
 import com.example.antminerconnectiontest.ui.remote.RemoteLogsTab
 import com.example.antminerconnectiontest.ui.remote.RemotePoolsTab
 import com.example.antminerconnectiontest.ui.setup.SetupScreen
+
+/**
+ * A Hardware / Pools / Logs tab with the selected-machine context
+ * header on top (v0.2.0): every tab opens by naming the machine it is
+ * about — nickname, worker, LIVE/REMOTE chip, cloud updated line —
+ * and the content below rebinds whenever the selection changes.
+ */
+@Composable
+private fun TabWithMachineHeader(
+    detail: MinerDetailUi?,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onEditNickname: (() -> Unit)?,
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (detail != null) {
+            SelectedMachineHeader(
+                detail = detail,
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                onEditNickname = onEditNickname,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            content()
+        }
+    }
+}
 
 @Composable
 fun MainDashboardScreen(
@@ -53,8 +87,9 @@ fun MainDashboardScreen(
     }
 
     // The selected snapshot miner as unified detail data — feeds the
-    // Hardware / Pools / Logs tabs when no local miner is active,
-    // resolved with the same name chain the fleet uses.
+    // Hardware / Pools / Logs tabs when the selected machine is shown
+    // from its cloud snapshot, resolved with the same name chain the
+    // fleet uses.
     val selectedRemoteDetail = uiState.selectedRemoteMiner?.let { snap ->
         val entry = mergedMiners.firstOrNull { it.remoteSnapshot?.id == snap.id }
         snap.toMinerDetailUi(
@@ -62,6 +97,45 @@ fun MainDashboardScreen(
                 ?: PhoneNicknames.displayName(uiState.nicknameOverrides, entry?.localProfile, snap)
         )
     }
+
+    // ── v0.2.0: the tabs follow the ONE selected machine ─────────────
+    // Same precedence as Home: when the selected snapshot is the same
+    // machine as the active local profile AND live local data for it is
+    // online, the tabs show the LIVE machine; otherwise a selected
+    // snapshot machine's tabs show its cloud data. With no snapshot
+    // selected, the tabs show the active local profile.
+    val selectedEntry = uiState.selectedRemoteMiner?.let { snap ->
+        mergedMiners.firstOrNull { it.remoteSnapshot?.id == snap.id }
+    }
+    val activeEntry = activeProfile?.let { profile ->
+        mergedMiners.firstOrNull { it.localProfile?.id == profile.id }
+    }
+    val localWinsForTabs = uiState.selectedRemoteMiner != null &&
+        activeProfile != null &&
+        selectedEntry?.localProfile?.id == activeProfile.id &&
+        uiState.dashboardData?.profileId == activeProfile.id &&
+        uiState.dashboardData?.isOnline == true
+    val useCloudTabs = uiState.selectedRemoteMiner != null && !localWinsForTabs
+    val localDetail = activeProfile?.let { profile ->
+        localMinerDetailUi(
+            profile = profile,
+            data = uiState.dashboardData,
+            displayName = activeEntry?.displayName
+                ?: PhoneNicknames.displayName(uiState.nicknameOverrides, profile, null)
+        )
+    }
+    /** The detail every Hardware/Pools/Logs header + cloud tab renders. */
+    val tabDetail: MinerDetailUi? =
+        if (useCloudTabs || activeProfile == null) selectedRemoteDetail else localDetail
+    /** Merged entry of the machine the tabs are about (nickname editing). */
+    val tabEntry = if (uiState.selectedRemoteMiner != null) selectedEntry else activeEntry
+    /**
+     * Device-tab identity card data: only when the selected machine is
+     * NOT the active local profile — that profile's full identity cards
+     * already render on the Device tab.
+     */
+    val identityDetail: MinerDetailUi? =
+        if (activeProfile == null || useCloudTabs) selectedRemoteDetail else null
 
     AntminerConnectionTestTheme(themeMode = uiState.themeMode) {
         // Top-level routing (see MainShellRouting): ONE shell for
@@ -193,57 +267,81 @@ fun MainDashboardScreen(
                             )
                         }
                         DashboardTab.HARDWARE -> {
-                            if (activeProfile == null) {
-                                RemoteHardwareTab(detail = selectedRemoteDetail)
-                            } else {
-                            HardwareScreen(
-                                profile = activeProfile,
-                                data = uiState.dashboardData,
+                            TabWithMachineHeader(
+                                detail = tabDetail,
                                 isRefreshing = uiState.isRefreshing,
-                                onManualRefresh = viewModel::manualRefresh,
-                                dashboardError = uiState.dashboardError,
-                                onRetry = viewModel::manualRefresh
-                            )
+                                onRefresh = viewModel::manualRefresh,
+                                onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
+                            ) {
+                                if (useCloudTabs || activeProfile == null) {
+                                    RemoteHardwareTab(detail = selectedRemoteDetail)
+                                } else {
+                                    HardwareScreen(
+                                        profile = activeProfile,
+                                        data = uiState.dashboardData,
+                                        detail = localDetail!!,
+                                        isRefreshing = uiState.isRefreshing,
+                                        onManualRefresh = viewModel::manualRefresh,
+                                        dashboardError = uiState.dashboardError,
+                                        onRetry = viewModel::manualRefresh
+                                    )
+                                }
                             }
                         }
                         DashboardTab.POOLS -> {
-                            if (activeProfile == null) {
-                                RemotePoolsTab(detail = selectedRemoteDetail)
-                            } else {
-                            PoolsScreen(
-                                profile = activeProfile,
-                                data = uiState.dashboardData,
+                            TabWithMachineHeader(
+                                detail = tabDetail,
                                 isRefreshing = uiState.isRefreshing,
-                                onManualRefresh = viewModel::manualRefresh,
-                                dashboardError = uiState.dashboardError,
-                                onRetry = viewModel::manualRefresh
-                            )
+                                onRefresh = viewModel::manualRefresh,
+                                onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
+                            ) {
+                                if (useCloudTabs || activeProfile == null) {
+                                    RemotePoolsTab(detail = selectedRemoteDetail)
+                                } else {
+                                    PoolsScreen(
+                                        profile = activeProfile,
+                                        data = uiState.dashboardData,
+                                        isRefreshing = uiState.isRefreshing,
+                                        onManualRefresh = viewModel::manualRefresh,
+                                        dashboardError = uiState.dashboardError,
+                                        onRetry = viewModel::manualRefresh
+                                    )
+                                }
                             }
                         }
                         DashboardTab.LOGS -> {
-                            if (activeProfile == null) {
-                                RemoteLogsTab(detail = selectedRemoteDetail)
-                            } else {
-                            LogsScreen(
-                                profile = activeProfile,
-                                selectedTab = uiState.selectedLogsTab,
-                                currentLogText = uiState.currentLogText,
-                                historyLogText = uiState.historyLogText,
-                                isLoading = uiState.isLoadingLog,
-                                errorMessage = uiState.logErrorMessage,
-                                lastUpdated = uiState.lastLogUpdated,
-                                isOnline = uiState.dashboardData?.isOnline == true && uiState.selectedRemoteMiner == null,
-                                dailyAnalysisState = uiState.dailyAnalysisState,
-                                onSelectTab = viewModel::selectLogsTab,
-                                onRefresh = viewModel::refreshActiveLog,
-                                onToggleDateSelection = viewModel::toggleDailyDateSelection,
-                                onSelectAllUnanalyzed = viewModel::selectAllUnanalyzedDates,
-                                onClearSelection = viewModel::clearDailyDateSelection,
-                                onStartDailyAnalysis = viewModel::startDailyAnalysis,
-                                onOpenAnalysisDetail = viewModel::openDailyAnalysisDetail,
-                                onCloseAnalysisDetail = viewModel::closeDailyAnalysisDetail,
-                                onRefreshDailyDates = { viewModel.loadDailyAnalysisDates(forceRefresh = true) }
-                            )
+                            TabWithMachineHeader(
+                                detail = tabDetail,
+                                isRefreshing = uiState.isRefreshing,
+                                onRefresh = viewModel::manualRefresh,
+                                onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
+                            ) {
+                                if (useCloudTabs || activeProfile == null) {
+                                    // The selected machine's logs are
+                                    // on-location: the panel names it.
+                                    RemoteLogsTab(detail = selectedRemoteDetail)
+                                } else {
+                                    LogsScreen(
+                                        profile = activeProfile,
+                                        selectedTab = uiState.selectedLogsTab,
+                                        currentLogText = uiState.currentLogText,
+                                        historyLogText = uiState.historyLogText,
+                                        isLoading = uiState.isLoadingLog,
+                                        errorMessage = uiState.logErrorMessage,
+                                        lastUpdated = uiState.lastLogUpdated,
+                                        isOnline = uiState.dashboardData?.isOnline == true,
+                                        dailyAnalysisState = uiState.dailyAnalysisState,
+                                        onSelectTab = viewModel::selectLogsTab,
+                                        onRefresh = viewModel::refreshActiveLog,
+                                        onToggleDateSelection = viewModel::toggleDailyDateSelection,
+                                        onSelectAllUnanalyzed = viewModel::selectAllUnanalyzedDates,
+                                        onClearSelection = viewModel::clearDailyDateSelection,
+                                        onStartDailyAnalysis = viewModel::startDailyAnalysis,
+                                        onOpenAnalysisDetail = viewModel::openDailyAnalysisDetail,
+                                        onCloseAnalysisDetail = viewModel::closeDailyAnalysisDetail,
+                                        onRefreshDailyDates = { viewModel.loadDailyAnalysisDates(forceRefresh = true) }
+                                    )
+                                }
                             }
                         }
                         DashboardTab.DEVICE -> {
@@ -272,7 +370,18 @@ fun MainDashboardScreen(
                                 // flow exits back into this shell and
                                 // never disconnects the current miner.
                                 onAddNewMiner = viewModel::openLocalSetup,
-                                onDisconnect = viewModel::disconnect
+                                onDisconnect = viewModel::disconnect,
+                                // Selected-machine identity card
+                                // (v0.2.0) — follows the selection when
+                                // it isn't the active local profile.
+                                // Snapshots carry no serial: live-only.
+                                selectedMachineName = identityDetail?.displayName,
+                                selectedMachineWorker = identityDetail?.workerName ?: "",
+                                selectedMachineModel = identityDetail?.modelName ?: "",
+                                selectedMachineFirmware = identityDetail?.firmware ?: "",
+                                selectedMachineSerial = "",
+                                selectedMachineIp = uiState.selectedRemoteMiner?.ip ?: "",
+                                selectedMachineIsRemote = identityDetail?.isRemote == true
                             )
                         }
                     }

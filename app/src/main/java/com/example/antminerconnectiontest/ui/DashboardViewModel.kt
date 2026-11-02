@@ -457,6 +457,34 @@ class DashboardViewModel(
 
         // One update check per cold start. Silent on failure/offline.
         checkForUpdates(manual = false)
+
+        // Default selection (v0.2.0, approved model): there is always
+        // ONE selected machine — the hero's machine, which every tab
+        // follows. When nothing is selected (no active local profile,
+        // no explicit fleet pick) but the fleet is non-empty, settle
+        // the selection on the first machine of the ranked fleet
+        // (online first by hashrate, offline last). Explicit user
+        // selections always win: the guard below never overrides one.
+        viewModelScope.launch {
+            mergedMiners.collect { entries ->
+                applyDefaultSelection(entries)
+            }
+        }
+    }
+
+    private fun applyDefaultSelection(entries: List<MergedMinerEntry>) {
+        val state = _uiState.value
+        if (state.activeProfile != null || state.selectedRemoteMiner != null) return
+        if (state.isLocalSetupOpen) return
+        if (entries.isEmpty()) return
+        val first = FleetSorting.sortEntries(entries, System.currentTimeMillis())
+            .firstOrNull() ?: return
+        val entry = first.entry
+        val snapshot = entry.remoteSnapshot
+        when {
+            snapshot != null -> selectRemoteMiner(snapshot, switchToHome = false)
+            entry.localProfile != null -> selectSavedProfile(entry.localProfile)
+        }
     }
 
     /** Installed versionName ("0.1.4"), or null when it cannot be read. */
@@ -1317,6 +1345,15 @@ class DashboardViewModel(
     }
 
     fun selectRemoteMiner(remote: RemoteMinerSnapshot) {
+        selectRemoteMiner(remote, switchToHome = true)
+    }
+
+    /**
+     * [switchToHome] is true for deliberate user picks (a fleet-row tap
+     * lands on Home, as before); the v0.2.0 default-selection passes
+     * false so merely opening another tab never yanks the user Home.
+     */
+    private fun selectRemoteMiner(remote: RemoteMinerSnapshot, switchToHome: Boolean) {
         // Same machine saved locally? Then this is ONE machine, not two:
         // activate the local profile as well, so live local data is fetched
         // and wins for display (Home shows the remote snapshot only while
@@ -1325,14 +1362,14 @@ class DashboardViewModel(
         val localMatch = MinerMerge.findLocalMatch(remote, _uiState.value.savedProfiles)
         if (localMatch != null) {
             _uiState.update {
-                it.copy(
+                val updated = it.copy(
                     selectedRemoteMiner = remote,
                     activeProfile = localMatch,
-                    selectedTab = DashboardTab.HOME,
                     currentLogText = null,
                     historyLogText = null,
                     dailyAnalysisState = DailyAnalysisUiState(loadedForMinerId = localMatch.id)
                 )
+                if (switchToHome) updated.copy(selectedTab = DashboardTab.HOME) else updated
             }
             profileManager.selectProfile(localMatch.id)
             repository.setActiveProfile(localMatch)
@@ -1341,10 +1378,8 @@ class DashboardViewModel(
             }
         } else {
             _uiState.update {
-                it.copy(
-                    selectedRemoteMiner = remote,
-                    selectedTab = DashboardTab.HOME
-                )
+                val updated = it.copy(selectedRemoteMiner = remote)
+                if (switchToHome) updated.copy(selectedTab = DashboardTab.HOME) else updated
             }
         }
     }
