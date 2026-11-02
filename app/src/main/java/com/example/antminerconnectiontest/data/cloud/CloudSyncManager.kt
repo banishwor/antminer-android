@@ -3,6 +3,7 @@ package com.example.antminerconnectiontest.data.cloud
 import com.example.antminerconnectiontest.domain.model.CloudSyncResponse
 import com.example.antminerconnectiontest.domain.model.RelayUpload
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
+import com.example.antminerconnectiontest.domain.model.TelemetryCodec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,7 +44,7 @@ class CloudSyncManager(
             miners: List<RemoteMinerSnapshot>
         ): Map<String, Any> {
             val minerMaps = miners.map { miner ->
-                linkedMapOf<String, Any>(
+                val map = linkedMapOf<String, Any>(
                     "id" to miner.id,
                     "nickname" to miner.nickname,
                     "ip" to miner.ip,
@@ -53,6 +54,29 @@ class CloudSyncManager(
                     "maxFan" to miner.maxFan,
                     "status" to miner.status
                 )
+                // Extended telemetry (v0.1.6): a key is sent only when
+                // the reading was actually measured, so the endpoint
+                // leaves the cell blank for unknown values instead of
+                // the client inventing a 0 the far side would render
+                // as real. Legacy maxTemp/maxFan above stay populated
+                // exactly as before for older readers.
+                if (miner.model.isNotBlank()) map["model"] = miner.model
+                if (miner.firmware.isNotBlank()) map["firmware"] = miner.firmware
+                miner.uptimeSec?.let { map["uptimeSec"] = it }
+                miner.hwErrors?.let { map["hwErrors"] = it }
+                miner.hashrate30m?.let { map["hashrate30m"] = it }
+                miner.idealHashrate?.let { map["idealHashrate"] = it }
+                miner.maxChipTemp?.let { map["maxChipTemp"] = it }
+                miner.maxPcbTemp?.let { map["maxPcbTemp"] = it }
+                if (miner.fanRpms.isNotEmpty()) map["fans"] = TelemetryCodec.encodeFans(miner.fanRpms)
+                if (miner.poolUrl.isNotBlank()) map["poolUrl"] = miner.poolUrl
+                if (miner.poolWorker.isNotBlank()) map["poolWorker"] = miner.poolWorker
+                if (miner.poolStatus.isNotBlank()) map["poolStatus"] = miner.poolStatus
+                miner.acceptedShares?.let { map["acceptedShares"] = it }
+                miner.rejectedShares?.let { map["rejectedShares"] = it }
+                miner.health?.let { map["health"] = TelemetryCodec.encodeHealth(it) }
+                if (miner.chains.isNotEmpty()) map["chainsJson"] = TelemetryCodec.encodeChains(miner.chains)
+                map
             }
             return linkedMapOf(
                 "user" to userName.trim(),
@@ -60,6 +84,68 @@ class CloudSyncManager(
                 "miners" to minerMaps
             )
         }
+
+        /**
+         * Parses one miner row from the endpoint's JSON. Tolerant by
+         * design — the endpoint passes sheet cells through, so numbers
+         * may arrive as JSON numbers, numeric strings, or "" (an empty
+         * cell), and rows written before v0.1.6 lack the extended keys
+         * entirely. Every extended field falls back to unknown
+         * (null/blank/empty) rather than a fabricated default.
+         */
+        fun parseRemoteMiner(obj: JSONObject): RemoteMinerSnapshot {
+            return RemoteMinerSnapshot(
+                user = obj.optString("user", ""),
+                id = obj.optString("id", ""),
+                nickname = obj.optString("nickname", "Antminer"),
+                ip = obj.optString("ip", ""),
+                hashrate5s = obj.optDouble("hashrate5s", 0.0),
+                avgHashrate = obj.optDouble("avgHashrate", 0.0),
+                maxTemp = obj.optInt("maxTemp", 0),
+                maxFan = obj.optInt("maxFan", 0),
+                status = obj.optString("status", "Online"),
+                lastUpdated = obj.optString("lastUpdated", ""),
+                model = obj.optString("model", ""),
+                firmware = obj.optString("firmware", ""),
+                uptimeSec = obj.optLongOrNull("uptimeSec"),
+                hwErrors = obj.optLongOrNull("hwErrors"),
+                hashrate30m = obj.optDoubleOrNull("hashrate30m"),
+                idealHashrate = obj.optDoubleOrNull("idealHashrate"),
+                maxChipTemp = obj.optIntOrNull("maxChipTemp"),
+                maxPcbTemp = obj.optIntOrNull("maxPcbTemp"),
+                fanRpms = TelemetryCodec.decodeFans(obj.optString("fans", "")),
+                poolUrl = obj.optString("poolUrl", ""),
+                poolWorker = obj.optString("poolWorker", ""),
+                poolStatus = obj.optString("poolStatus", ""),
+                acceptedShares = obj.optLongOrNull("acceptedShares"),
+                rejectedShares = obj.optLongOrNull("rejectedShares"),
+                health = TelemetryCodec.decodeHealth(obj.optString("health", "")),
+                chains = TelemetryCodec.decodeChains(obj.optString("chainsJson", ""))
+            )
+        }
+
+        /** Long value, or null when the key is absent/blank/non-numeric. */
+        private fun JSONObject.optLongOrNull(name: String): Long? {
+            if (!has(name) || isNull(name)) return null
+            return when (val v = opt(name)) {
+                is Number -> v.toLong()
+                is String -> v.trim().toLongOrNull()
+                else -> null
+            }
+        }
+
+        /** Double value, or null when absent/blank/non-numeric/NaN. */
+        private fun JSONObject.optDoubleOrNull(name: String): Double? {
+            if (!has(name) || isNull(name)) return null
+            return when (val v = opt(name)) {
+                is Number -> v.toDouble().takeIf { !it.isNaN() }
+                is String -> v.trim().toDoubleOrNull()?.takeIf { !it.isNaN() }
+                else -> null
+            }
+        }
+
+        private fun JSONObject.optIntOrNull(name: String): Int? =
+            optLongOrNull(name)?.toInt()
 
         /** The delete-rows payload as plain data; see [deleteRemoteRows]. */
         fun buildDeletePayloadData(
@@ -144,21 +230,7 @@ class CloudSyncManager(
                     val minersList = mutableListOf<RemoteMinerSnapshot>()
 
                     for (i in 0 until minersArray.length()) {
-                        val obj = minersArray.getJSONObject(i)
-                        minersList.add(
-                            RemoteMinerSnapshot(
-                                user = obj.optString("user", ""),
-                                id = obj.optString("id", ""),
-                                nickname = obj.optString("nickname", "Antminer"),
-                                ip = obj.optString("ip", ""),
-                                hashrate5s = obj.optDouble("hashrate5s", 0.0),
-                                avgHashrate = obj.optDouble("avgHashrate", 0.0),
-                                maxTemp = obj.optInt("maxTemp", 0),
-                                maxFan = obj.optInt("maxFan", 0),
-                                status = obj.optString("status", "Online"),
-                                lastUpdated = obj.optString("lastUpdated", "")
-                            )
-                        )
+                        minersList.add(parseRemoteMiner(minersArray.getJSONObject(i)))
                     }
 
                     Result.success(
