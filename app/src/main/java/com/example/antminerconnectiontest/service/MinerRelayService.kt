@@ -184,7 +184,10 @@ class MinerRelayService : Service() {
                                         }
                                     }
                                 } catch (e: Exception) {
-                                    e.printStackTrace()
+                                    // One miner's unexpected failure must
+                                    // not stop the others (v0.3.1: no stack
+                                    // dump per miner per cycle — failures
+                                    // surface via the cycle notification).
                                 }
                             }
 
@@ -258,7 +261,10 @@ class MinerRelayService : Service() {
                         }
                     }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    // Cycle-level failure (storage, config): stay silent
+                    // and let the next cycle retry (v0.3.1: this catch
+                    // used to dump a full stack trace to logcat every
+                    // 30 s for as long as the failure persisted).
                 }
 
                 delay(30000L) // Poll every 30 seconds in background
@@ -295,7 +301,8 @@ class MinerRelayService : Service() {
                 )
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Persisting the learned identity is best-effort; the
+            // in-memory sheetId is still returned for this cycle.
         }
         return sheetId
     }
@@ -362,7 +369,8 @@ class MinerRelayService : Service() {
                 storageManager.saveProfiles(stored)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Best-effort per cycle (v0.3.1: no per-cycle stack dump);
+            // the next cycle retries with a fresh candidate set.
         }
     }
 
@@ -404,7 +412,7 @@ class MinerRelayService : Service() {
                 cloudSyncManager.deleteRemoteRows(config.webhookUrl, config.userName, duplicateIds)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            // Best-effort by design (see doc above); ignored quietly.
         }
     }
 
@@ -441,7 +449,19 @@ class MinerRelayService : Service() {
             .build()
     }
 
+    // The last notification actually posted (v0.3.1): standby states
+    // repeat the identical title/content for hours (e.g. "0 Miners
+    // Online" overnight) — re-posting the same notification every
+    // 30 s cycle only churns the notification pipeline, so identical
+    // repeats are skipped. Anything that changes the text (miner
+    // count, hashrate, sync time, error) posts as before.
+    private var lastNotificationTitle: String? = null
+    private var lastNotificationContent: String? = null
+
     private fun updateNotification(title: String, content: String) {
+        if (title == lastNotificationTitle && content == lastNotificationContent) return
+        lastNotificationTitle = title
+        lastNotificationContent = content
         val manager = getSystemService(NotificationManager::class.java)
         manager?.notify(NOTIFICATION_ID, buildNotification(title, content))
     }
