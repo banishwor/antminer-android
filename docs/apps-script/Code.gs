@@ -51,6 +51,9 @@
  * Optional "Grants" tab (header row 1): owner | viewer
  *   A row means: <viewer> may see <owner>'s miners in Remote View.
  *
+ * Master users (MASTER_USERS below, default: "Master") can view
+ * EVERYONE's miners in Remote View — no Grants rows needed.
+ *
  * Deploy: paste into the Apps Script project bound to the spreadsheet,
  * then Deploy -> Web app (execute as Me, access: Anyone). The app talks
  * to the /exec URL; redeploying a new version keeps the same URL.
@@ -58,6 +61,7 @@
 
 var MINERS_SHEET = 'Miners';
 var GRANTS_SHEET = 'Grants';
+var MASTER_USERS = ['Master'];
 var HEADERS = ['user', 'id', 'nickname', 'ip', 'hashrate5s', 'avgHashrate',
                'maxTemp', 'maxFan', 'status', 'lastUpdated',
                'model', 'firmware', 'uptimeSec', 'hwErrors', 'hashrate30m',
@@ -136,9 +140,33 @@ function viewableOwners_(user) {
   return owners;
 }
 
+/** Master users can view everyone's miners (see MASTER_USERS). */
+function isMaster_(user) {
+  var u = user.toLowerCase();
+  for (var i = 0; i < MASTER_USERS.length; i++) {
+    if (String(MASTER_USERS[i]).trim().toLowerCase() === u) return true;
+  }
+  return false;
+}
+
 function doGet(e) {
   var user = (e.parameter.user || '').trim();
   if (!user) return json_({ status: 'error', message: 'user is required' });
+
+  if (isMaster_(user)) {
+    var allRows = readRows_(minersSheet_());
+    var everyone = {};
+    allRows.forEach(function (row) {
+      var owner = String(row.user).trim();
+      if (owner && owner.toLowerCase() !== user.toLowerCase()) everyone[owner] = true;
+    });
+    return json_({
+      status: 'success',
+      user: user,
+      canView: Object.keys(everyone).join(','),
+      miners: allRows.map(publicRow_)
+    });
+  }
 
   var owners = viewableOwners_(user);
   var visible = owners.concat([user]).map(function (s) { return s.toLowerCase(); });

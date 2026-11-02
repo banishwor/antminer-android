@@ -10,7 +10,7 @@ reference implementation ([`Code.gs`](Code.gs)) that fulfils it.
 
 | Call | Payload | Response |
 | --- | --- | --- |
-| GET | `?user=<name>` | `{status, user, canView, miners[]}` — the user's own rows plus rows of owners who granted them view access |
+| GET | `?user=<name>` | `{status, user, canView, miners[]}` — the user's own rows plus rows of owners who granted them view access; **master users** (`MASTER_USERS` in Code.gs, default `Master`) receive everyone's rows, with `canView` listing all other owners |
 | POST | `{user, mode: "upsert", miners[]}` | `{status, count}` — one row per `(user, id)`, replaced on each write |
 | POST | `{user, action: "deleteRows", ids[]}` | `{status, count}` — deletes the caller's own rows with those ids |
 
