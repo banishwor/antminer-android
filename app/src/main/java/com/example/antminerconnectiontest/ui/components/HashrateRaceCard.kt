@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
@@ -41,60 +42,53 @@ data class MinerRaceParticipant(
 @Composable
 fun HashrateRaceCard(
     activeProfile: MinerProfile?,
-    savedProfiles: List<MinerProfile>,
-    remoteMiners: List<RemoteMinerSnapshot> = emptyList(),
+    mergedMiners: List<MergedMinerEntry> = emptyList(),
     selectedRemoteMinerId: String? = null,
-    minerHashrates: Map<String, Double>,
-    activeHashrateTh: Double,
     onSelectProfile: (MinerProfile) -> Unit,
     onSelectRemoteMiner: (RemoteMinerSnapshot) -> Unit = {},
     onAddNewMiner: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 1. Local participants: Only show miners that are ACTUALLY REACHABLE on current Wi-Fi (rate > 0.0)
-    // If unreachable (away from site), they remain saved in background but hidden from the live race!
-    val localParticipants = savedProfiles.mapNotNull { profile ->
-        val isActive = (profile.id == activeProfile?.id) && (selectedRemoteMinerId == null)
-        val rate = if (isActive && activeHashrateTh > 0.0) {
-            activeHashrateTh
-        } else {
-            minerHashrates[profile.id] ?: 0.0
-        }
-
-        if (rate > 0.0) {
-            MinerRaceParticipant(
-                id = profile.id,
-                name = profile.effectiveName,
-                userOrLocation = if (profile.location.isNotBlank() && profile.location != "Default Location") profile.location else "Local",
-                hashrateTh = rate,
-                isActive = isActive,
+    // One participant per MACHINE (merged entries): a machine saved
+    // locally AND present in the cloud sheet is a single row, never two.
+    // Display precedence per row: a live local reading wins; when local
+    // data is unavailable (away from site / not answering) the row falls
+    // back to the machine's remote snapshot.
+    val totalMiners = mergedMiners.mapNotNull { entry ->
+        val local = entry.localProfile
+        val remote = entry.remoteSnapshot
+        val localRate = entry.localHashrateTh ?: 0.0
+        when {
+            // Live local reading available — local data is displayed.
+            local != null && localRate > 0.0 -> MinerRaceParticipant(
+                id = entry.key,
+                name = entry.displayName,
+                userOrLocation = if (local.location.isNotBlank() && local.location != "Default Location") local.location else "Local",
+                hashrateTh = localRate,
+                isActive = (local.id == activeProfile?.id && selectedRemoteMinerId == null) ||
+                    (remote != null && remote.id == selectedRemoteMinerId),
                 isRemote = false,
-                localProfile = profile,
-                remoteSnapshot = null
+                localProfile = local,
+                remoteSnapshot = remote
             )
-        } else {
-            null // Hidden when unreachable on current Wi-Fi!
+            // Remote snapshot is the display data (remote-only machine, or
+            // a saved machine that is not currently reachable locally).
+            remote != null -> MinerRaceParticipant(
+                id = entry.key,
+                name = entry.displayName,
+                userOrLocation = if (remote.isStale) "⚠️ ${remote.user} (Offline)" else "☁️ ${remote.user}",
+                hashrateTh = remote.effectiveHashrate5s,
+                isActive = remote.id == selectedRemoteMinerId,
+                isRemote = true,
+                localProfile = local,
+                remoteSnapshot = remote
+            )
+            // Local-only and unreachable on current Wi-Fi: stays saved in
+            // the background but hidden from the live race (as before).
+            else -> null
         }
     }
-
-    // 2. Cloud participants: Show permitted remote miners from Google Sheet
-    val cloudParticipants = remoteMiners.map { remote ->
-        val isActive = remote.id == selectedRemoteMinerId
-        val rate = remote.effectiveHashrate5s
-        val userTag = if (remote.isStale) "⚠️ ${remote.user} (Offline)" else "☁️ ${remote.user}"
-        MinerRaceParticipant(
-            id = remote.id,
-            name = remote.effectiveDisplayName,
-            userOrLocation = userTag,
-            hashrateTh = rate,
-            isActive = isActive,
-            isRemote = true,
-            localProfile = null,
-            remoteSnapshot = remote
-        )
-    }
-
-    val totalMiners = localParticipants + cloudParticipants
+    val hasCloudParticipants = totalMiners.any { it.remoteSnapshot != null }
 
     // Only render if 2 or more devices are available (locally or remotely)
     if (totalMiners.size < 2) return
@@ -142,7 +136,7 @@ fun HashrateRaceCard(
                         letterSpacing = 0.6.sp,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (cloudParticipants.isNotEmpty()) {
+                    if (hasCloudParticipants) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
                             color = CyberCyan.copy(alpha = 0.15f),
@@ -179,7 +173,13 @@ fun HashrateRaceCard(
                     maxRate = topRate,
                     onClick = {
                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        if (participant.localProfile != null) {
+                        if (participant.isRemote && participant.remoteSnapshot != null) {
+                            // Display data is the snapshot: select it (the
+                            // ViewModel activates the local profile too when
+                            // this is a merged machine, so local data can
+                            // take over once fetched).
+                            onSelectRemoteMiner(participant.remoteSnapshot)
+                        } else if (participant.localProfile != null) {
                             onSelectProfile(participant.localProfile)
                         } else if (participant.remoteSnapshot != null) {
                             onSelectRemoteMiner(participant.remoteSnapshot)

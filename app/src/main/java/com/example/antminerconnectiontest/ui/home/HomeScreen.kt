@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.alerts.MinerAlert
+import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
@@ -44,6 +45,7 @@ fun HomeScreen(
     profile: MinerProfile,
     savedProfiles: List<MinerProfile>,
     remoteMiners: List<RemoteMinerSnapshot> = emptyList(),
+    mergedMiners: List<MergedMinerEntry> = emptyList(),
     selectedRemoteMiner: RemoteMinerSnapshot? = null,
     minerHashrates: Map<String, Double> = emptyMap(),
     data: MinerDashboardData?,
@@ -407,11 +409,8 @@ fun HomeScreen(
             // 5. Live Hashrate Race Leaderboard (Only renders when 2+ miners exist!)
             HashrateRaceCard(
                 activeProfile = profile,
-                savedProfiles = savedProfiles,
-                remoteMiners = remoteMiners,
+                mergedMiners = mergedMiners,
                 selectedRemoteMinerId = selectedRemoteMiner?.id,
-                minerHashrates = minerHashrates,
-                activeHashrateTh = hashrate,
                 onSelectProfile = onSelectMinerProfile,
                 onSelectRemoteMiner = onSelectRemoteMiner,
                 onAddNewMiner = onAddNewMiner

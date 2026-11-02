@@ -137,6 +137,7 @@ fun MainDashboardScreen(
                                 profile = activeProfile,
                                 savedProfiles = uiState.savedProfiles,
                                 remoteMiners = uiState.remoteMiners,
+                                mergedMiners = mergedMiners,
                                 selectedRemoteMiner = uiState.selectedRemoteMiner,
                                 minerHashrates = uiState.minerHashrates,
                                 data = uiState.dashboardData,
