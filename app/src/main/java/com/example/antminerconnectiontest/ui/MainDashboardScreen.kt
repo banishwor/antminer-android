@@ -11,6 +11,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.MinerSwitcherBottomSheet
@@ -27,6 +29,12 @@ fun MainDashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val activeProfile = uiState.activeProfile
+
+    // Refresh on return to the foreground when the dashboard is empty,
+    // errored, or stale — instead of showing pre-sleep data indefinitely.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshIfStale()
+    }
 
     AntminerConnectionTestTheme(themeMode = uiState.themeMode) {
         if (activeProfile == null) {

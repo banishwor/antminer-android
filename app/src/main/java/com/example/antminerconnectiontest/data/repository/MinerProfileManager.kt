@@ -35,6 +35,7 @@ class MinerProfileManager(
     }
 
     fun saveOrUpdateProfile(profile: MinerProfile) {
+        var mergedId = profile.id
         _savedProfiles.update { currentList ->
             // Match by workerName (if non-blank), unique ID, or (host + location)
             val existingIndex = currentList.indexOfFirst {
@@ -52,6 +53,7 @@ class MinerProfileManager(
                     macAddress = if (profile.macAddress.isNotBlank()) profile.macAddress else existing.macAddress,
                     password = if (profile.password.isNotBlank() && profile.password != "root") profile.password else existing.password
                 )
+                mergedId = merged.id
                 currentList.toMutableList().apply {
                     this[existingIndex] = merged
                 }
@@ -59,7 +61,10 @@ class MinerProfileManager(
                 currentList + profile
             }
         }
-        _activeProfileId.value = profile.id
+        // The active id must be the MERGED profile's id. This previously stored
+        // the incoming profile's id, which a merge discards — getActiveProfile()
+        // then found no saved profile with that id and returned null.
+        _activeProfileId.value = mergedId
         persist()
     }
 

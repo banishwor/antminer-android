@@ -883,6 +883,30 @@ class DashboardViewModel(
             val updated = profileManager.getActiveProfile()
             if (updated != null) {
                 repository.setActiveProfile(updated)
+                // Refresh right away: a rename used to blank/stale the
+                // dashboard until the next 15 s poll tick.
+                viewModelScope.launch {
+                    repository.refreshDashboardData()
+                }
+            }
+        }
+    }
+
+    /**
+     * Called when the app returns to the foreground. Refreshes the dashboard
+     * if there is no data yet, the last refresh failed, or the data is older
+     * than ~2 poll cycles — previously the app just showed whatever stale
+     * state it had when the phone slept.
+     */
+    fun refreshIfStale() {
+        if (_uiState.value.activeProfile == null) return
+        val data = _uiState.value.dashboardData
+        val isStale = data == null ||
+            _uiState.value.dashboardError != null ||
+            System.currentTimeMillis() - data.lastUpdated > 30_000L
+        if (isStale) {
+            viewModelScope.launch {
+                repository.refreshDashboardData()
             }
         }
     }
