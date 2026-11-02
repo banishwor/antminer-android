@@ -67,8 +67,8 @@ class HomeModelsTest {
     @Test
     fun heroSummary_declaresOnlySummaryFields() {
         val fieldNames = HeroSummary::class.java.declaredFields
+            .filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
             .map { it.name.lowercase() }
-            .filter { !it.startsWith("$") }
             .toSet()
         // The exact approved field set — adding a field here is a
         // design decision, not an accident.
