@@ -2,50 +2,65 @@ package com.example.antminerconnectiontest.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ── Nord palette (v0.2.0, "Style A — Nord Clean Light") ─────────────────
-// One palette for both themes: light uses the bright Nord snow-storm
-// surfaces, dark uses the polar-night surfaces, and every layout and
-// component is identical across the two — only the surface/text tones
-// swap. Colour carries STATUS only (green = online, red = offline,
-// amber = needs-password / warning), never the data source: a cloud
-// machine and a local machine are the same machine in two states, told
-// apart by the LIVE / REMOTE chip, not by paint.
+// ── Violet palette (v0.2.2, mockup mode 8 "Violet") ────────────────────
+// Values taken from the approved mockup page (artifact
+// 'antminer-ui-mockups-3-styles', .th-violet-l / .th-violet-d CSS vars).
+// One palette for both themes: light is lavender-white with a deep
+// violet accent; dark is TRUE AMOLED — pure #000000 background and
+// near-black #0A0A0B cards with violet-tinted borders, never grey.
+// Colour carries STATUS only, never the data source: a cloud machine
+// and a local machine are told apart by the LIVE / REMOTE chip, not by
+// paint. Status stays instantly distinguishable in both themes:
+// online = violet accent (colorScheme.primary), offline = red
+// (colorScheme.error), needs-password / warning = amber
+// (colorScheme.tertiary) — the red and the violet are far enough apart
+// in hue and lightness to never be confused.
 
-// --- Light theme: snow storm ---
-val LightBackground = Color(0xFFECEFF4) // nord6
-val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceVariant = Color(0xFFE5E9F0) // nord5
-val LightBorder = Color(0xFFD8DEE9) // nord4
-val LightBorderSubtle = Color(0xFFE5E9F0) // nord5
+// --- Light theme: lavender-white ---
+val LightBackground = Color(0xFFF4F1FF) // mockup --bg
+val LightSurface = Color(0xFFFFFFFF) // mockup --surface
+val LightSurfaceVariant = Color(0xFFEDE9FE) // mockup --chip / --selRow / --accentBg
+val LightBorder = Color(0xFFDDD6FE) // mockup --border
+val LightBorderSubtle = Color(0xFFEDE9FE) // mockup --chip tint
 
-val LightTextPrimary = Color(0xFF2E3440) // nord0
-val LightTextSecondary = Color(0xFF4C566A) // nord3
-val LightTextMuted = Color(0xFF616E88) // brightened nord3
+val LightTextPrimary = Color(0xFF1E1040) // mockup --text
+val LightTextSecondary = Color(0xFF6B5F8A) // mockup --muted
+val LightTextMuted = Color(0xFF9689B8) // derived: --muted lightened
 
-// --- Dark theme: polar night ---
-val DarkBackground = Color(0xFF2E3440) // nord0
-val DarkSurface = Color(0xFF3B4252) // nord1
-val DarkSurfaceVariant = Color(0xFF434C5E) // nord2
-val DarkBorder = Color(0xFF4C566A) // nord3
-val DarkBorderSubtle = Color(0xFF434C5E) // nord2
+// --- Dark theme: AMOLED black ---
+val DarkBackground = Color(0xFF000000) // mockup --bg: pure black, AMOLED
+val DarkSurface = Color(0xFF0A0A0B) // mockup --surface: near-black cards
+val DarkSurfaceVariant = Color(0xFF171226) // mockup --chip: violet-tinted near-black
+val DarkBorder = Color(0xFF251D3D) // mockup --border
+val DarkBorderSubtle = Color(0xFF171226) // mockup --chip tint
 
-val DarkTextPrimary = Color(0xFFECEFF4) // nord6
-val DarkTextSecondary = Color(0xFFD8DEE9) // nord4
-val DarkTextMuted = Color(0xFF8F9BB3)
+val DarkTextPrimary = Color(0xFFF5F3FF) // mockup --text
+val DarkTextSecondary = Color(0xFF9A8FB8) // mockup --muted
+val DarkTextMuted = Color(0xFF7A6F99) // derived: --muted dimmed
 
-// --- Nord accents (shared hues; the colour schemes deepen/lighten per
-// theme where a token is used as text — see Theme.kt). ---
-/** Nord green (nord14 #A3BE8C) deepened so it stays legible as text/icons on light surfaces. */
-val AntminerEmerald = Color(0xFF7A9A5B)
-val AntminerEmeraldDark = Color(0xFF4A6338)
-/** Nord blue (nord10). Kept under its historic name; it is a blue now, not a cyan. */
-val CyberCyan = Color(0xFF5E81AC)
-/** Nord frost (nord8) — decorative accents and chart series only. */
-val ElectricBlue = Color(0xFF88C0D0)
-/** Amber for warnings / needs-password (a #B7791F-style deepened nord13). */
-val WarningAmber = Color(0xFFB7791F)
-/** Nord red (nord11). */
-val ErrorRuby = Color(0xFFBF616A)
+// --- Violet accents (shared constants; the colour schemes carry the
+// per-theme text-safe variants — see Theme.kt). ---
+/**
+ * The palette's defining violet (mockup light --accent #6D28D9). Kept
+ * under its historic name; it is the "positive / OK" accent — chips OK,
+ * accepted shares, active states — matching the mockup, where the
+ * online status dot is the accent colour itself.
+ */
+val AntminerEmerald = Color(0xFF6D28D9)
+/** Deep violet (mockup light --chipText #4C2D8A). */
+val AntminerEmeraldDark = Color(0xFF4C2D8A)
+/**
+ * Mid violet for chart series / secondary figures. Kept under its
+ * historic name; it is a violet now, not a cyan. Derived step between
+ * the light accent #6D28D9 and the dark accent #A78BFA.
+ */
+val CyberCyan = Color(0xFF8B5CF6)
+/** Pale lavender (mockup dark --accentSoft #C4B5FD) — decorative accents and chart series only. */
+val ElectricBlue = Color(0xFFC4B5FD)
+/** Amber for warnings / needs-password (mockup light --amber). */
+val WarningAmber = Color(0xFFBE7D1C)
+/** Offline / error red (mockup light --red). */
+val ErrorRuby = Color(0xFFBC4B4B)
 
 // Compatibility aliases (prefer MaterialTheme tokens in new code)
 val MinerBackground = DarkBackground
