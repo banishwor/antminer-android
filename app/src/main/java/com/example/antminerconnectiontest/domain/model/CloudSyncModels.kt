@@ -53,7 +53,44 @@ data class RemoteMinerSnapshot(
     val maxTemp: Int,
     val maxFan: Int,
     val status: String,
-    val lastUpdated: String
+    val lastUpdated: String,
+    // ── Extended telemetry (v0.1.6) ─────────────────────────────────
+    // Everything below rides in sheet columns appended after the
+    // original ten. Rows written before v0.1.6 don't carry them, so
+    // every field is null / blank / empty when unknown and consumers
+    // render "--" — a value is never invented for a missing field.
+    /** Miner model, e.g. "Antminer S19k Pro" (system info / cached profile model). */
+    val model: String = "",
+    /** Firmware / system version string reported by the miner. */
+    val firmware: String = "",
+    /** Seconds since the miner booted (summary elapsed). */
+    val uptimeSec: Long? = null,
+    /** Total hardware errors reported by the miner. */
+    val hwErrors: Long? = null,
+    /** 30-minute average hashrate in TH/s, when the miner reports one. */
+    val hashrate30m: Double? = null,
+    /** Ideal (nameplate) hashrate in TH/s. */
+    val idealHashrate: Double? = null,
+    /** Highest ASIC chip temperature in °C — distinct from the PCB temp. */
+    val maxChipTemp: Int? = null,
+    /** Highest hash-board (PCB) temperature in °C. */
+    val maxPcbTemp: Int? = null,
+    /** Every fan's RPM in fan order, decoded from the packed sheet cell. */
+    val fanRpms: List<Int> = emptyList(),
+    /** Primary pool (priority 0) endpoint URL. */
+    val poolUrl: String = "",
+    /** Primary pool worker username. */
+    val poolWorker: String = "",
+    /** Primary pool status as reported by the miner ("Alive", "Dead", …). */
+    val poolStatus: String = "",
+    /** Primary pool accepted share count. */
+    val acceptedShares: Long? = null,
+    /** Primary pool rejected share count. */
+    val rejectedShares: Long? = null,
+    /** The miner's self-reported health flags (hashrate/network/fans/temp). */
+    val health: MinerHealthFlags? = null,
+    /** Per-chain detail decoded from the chainsJson sheet cell. */
+    val chains: List<RemoteChainSnapshot> = emptyList()
 ) {
     val effectiveDisplayName: String
         get() = nickname.ifBlank { "$user Miner ($ip)" }
@@ -126,6 +163,30 @@ data class RemoteMinerSnapshot(
                 else -> "${diffSec / 86400}d ago"
             }
         }
+
+    /** Uptime like the local dashboard ("3d 4h 12m"); null when unknown. */
+    val formattedUptime: String?
+        get() = uptimeSec?.let { formatUptime(it) }
+
+    /**
+     * Fans spinning below the local alert threshold
+     * ([TelemetryCodec.SLOW_FAN_RPM] — the same 3000 RPM the local
+     * ThresholdAlertEngine warns about). Zero when fan detail is unknown.
+     */
+    val slowFanCount: Int
+        get() = fanRpms.count { it < TelemetryCodec.SLOW_FAN_RPM }
+}
+
+/** "3d 4h 12m" / "4h 12m" / "12m" — same shape as [MinerSummary.formattedUptime]. */
+internal fun formatUptime(totalSeconds: Long): String {
+    val days = totalSeconds / 86400
+    val hours = (totalSeconds % 86400) / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    return when {
+        days > 0 -> "${days}d ${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h ${minutes}m"
+        else -> "${minutes}m"
+    }
 }
 
 /**
