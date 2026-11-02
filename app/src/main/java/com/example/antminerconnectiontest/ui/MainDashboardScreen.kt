@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -573,6 +575,17 @@ private fun RowScope.DashboardNavItems(
  * tier devices a blurred copy of the wallpaper sits inside it (the
  * panel frosting what's behind it); on glass-lite the translucent
  * fill + edge alone carry the look, with no live blur anywhere.
+ *
+ * Sizing (v0.3.2 bugfix): the capsule's geometry comes ONLY from
+ * [GlassTabBarSpec] — a fixed bar height, screen width minus fixed
+ * margins — and the backdrop inside it is a [GlassBackdrop], which
+ * by construction cannot influence the size of anything. The v0.3.0
+ * version let the backdrop's `fillMaxSize()` resolve against the
+ * Scaffold bottomBar slot's full-screen maxHeight, inflating the
+ * capsule into a screen-filling pill that hid all content. It lives
+ * in the bottomBar slot, so the Scaffold's content padding already
+ * reserves exactly [GlassTabBarSpec.ReservedHeight] above it and no
+ * content can slide behind it.
  */
 @Composable
 private fun GlassTabBarCapsule(
@@ -582,19 +595,27 @@ private fun GlassTabBarCapsule(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .padding(
+                horizontal = GlassTabBarSpec.HorizontalMargin,
+                vertical = GlassTabBarSpec.VerticalMargin
+            )
     ) {
         Surface(
-            shape = RoundedCornerShape(50),
+            shape = RoundedCornerShape(GlassTabBarSpec.CornerRadiusPercent),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, glassEdgeBrush(isDark)),
             shadowElevation = 12.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(GlassTabBarSpec.Height)
         ) {
-            Box {
+            Box(modifier = Modifier.fillMaxSize()) {
                 GlassBackdrop()
                 Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = GlassTabBarSpec.InnerHorizontalPadding),
+                    verticalAlignment = Alignment.CenterVertically,
                     content = content
                 )
             }

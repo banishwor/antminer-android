@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -153,17 +154,53 @@ fun GlassWallpaper(isDark: Boolean, tier: GlassTier, modifier: Modifier = Modifi
  * the parent's shape — it reads as the panel frosting whatever is
  * behind it. Renders nothing on LITE (the translucent fill + edge
  * carries the look there) and nothing when glass is off.
+ *
+ * SIZING INVARIANT (v0.3.2 bugfix): a backdrop must NEVER size its
+ * parent. This composable is a [BoxScope] member and sizes itself
+ * with [Modifier.matchParentSize] — it takes exactly the size the
+ * parent [Box] gets from its OTHER children and does not participate
+ * in the parent's measurement at all. The v0.3.0 version used
+ * `Modifier.fillMaxSize()` here instead: inside a wrap-content parent
+ * that resolves against the incoming constraints, and Scaffold hands
+ * its bottomBar slot a maxHeight of the full screen — so the tab-bar
+ * capsule inflated to a screen-filling pill and squeezed the content
+ * to nothing. Never give this layer a size-demanding modifier again.
  */
 @Composable
-fun GlassBackdrop(modifier: Modifier = Modifier) {
+fun BoxScope.GlassBackdrop() {
     val settings = LocalGlassSettings.current
     if (!settings.liveBlur) return
     Box(
-        modifier = modifier
-            .fillMaxSize()
+        modifier = Modifier
+            .matchParentSize()
             .blur(22.dp)
             .background(glassWallpaperBrush(settings.isDark))
     )
+}
+
+/**
+ * The floating glass tab-bar capsule's geometry (v0.3.2): pinned as
+ * named constants so the bar's size can never again be decided by an
+ * unbounded child or a loose constraint. The capsule is a normal
+ * bottom bar — [Height] sits in the standard navigation-bar band,
+ * the width is the screen minus [HorizontalMargin] on each side, and
+ * the total footprint the Scaffold reserves (height + vertical
+ * margins) stays small enough that content always keeps the screen.
+ * Unit tests pin these values.
+ */
+object GlassTabBarSpec {
+    /** Capsule height — a standard-height bar, not a screen. */
+    val Height = 72.dp
+    /** Space between the capsule and each screen edge. */
+    val HorizontalMargin = 20.dp
+    /** Space above and below the capsule inside the bottomBar slot. */
+    val VerticalMargin = 10.dp
+    /** Fully rounded ends — a pill at bar height, whatever the width. */
+    const val CornerRadiusPercent = 50
+    /** Breathing room between the capsule edge and the first/last tab. */
+    val InnerHorizontalPadding = 6.dp
+    /** Total height the Scaffold takes from the content for the bar. */
+    val ReservedHeight = Height + VerticalMargin * 2
 }
 
 /**
