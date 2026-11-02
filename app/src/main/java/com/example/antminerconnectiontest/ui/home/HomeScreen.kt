@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,7 +31,9 @@ import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.HashrateRaceCard
 import com.example.antminerconnectiontest.ui.components.MinerDataState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.example.antminerconnectiontest.ui.components.MinerDataStateCard
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,6 +75,18 @@ fun HomeScreen(
     val isStaleCloud = isCloudMode && effectiveRemote?.isStale == true
     val effectiveRetry = onRetry ?: onManualRefresh
 
+    // Tick every 5 s so the stale indicator can appear even when no new
+    // state arrives (e.g. polling silently stalled after the phone slept).
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMs = System.currentTimeMillis()
+            delay(5_000L)
+        }
+    }
+    // Older than ~2 poll cycles (2 x 15 s) without a refresh landing.
+    val isStaleLocal = !isCloudMode && data != null && nowMs - data.lastUpdated > 30_000L
+
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
     // Compute active hashrate values (supports 2-minute stale watchdog)
@@ -99,12 +115,20 @@ fun HomeScreen(
     val displayTemp = if (isCloudMode) effectiveRemote!!.maxTemp else (stats?.maxChipTemp ?: 0)
     val displayFan = if (isCloudMode) effectiveRemote!!.maxFan else (stats?.maxFanRpm ?: 0)
 
-    // 100% Non-Scrollable Layout Container
+    // Scrollable layout inside pull-to-refresh. This used to be a fixed,
+    // non-scrollable SpaceBetween column with hard-coded text sizes, which
+    // clipped content on small phones or with larger system font scaling.
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onManualRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -139,8 +163,8 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = if (isCloudMode) effectiveRemote!!.effectiveDisplayName else profile.effectiveName,
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 if (!isCloudMode && profile.workerName.isNotBlank() && profile.nickname.isNotBlank()) {
@@ -151,7 +175,7 @@ fun HomeScreen(
                                     ) {
                                         Text(
                                             text = profile.workerName,
-                                            fontSize = 9.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
@@ -163,14 +187,14 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = if (isCloudMode) "Cloud Owner: ${effectiveRemote!!.user}" else profile.host,
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.sp,
                                     color = if (isCloudMode) CyberCyan else MaterialTheme.colorScheme.primary
                                 )
                                 if (!isCloudMode && profile.location.isNotBlank() && profile.location != "Default Location") {
                                     Text(
                                         text = " • ${profile.location}",
-                                        fontSize = 10.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -235,13 +259,13 @@ fun HomeScreen(
                             Column {
                                 Text(
                                     text = if (isStaleCloud) "⚠️ CLOUD SIGNAL LOST (>2m)" else "CLOUD FARM VIEW",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isStaleCloud) MaterialTheme.colorScheme.error else CyberCyan
                                 )
                                 Text(
                                     text = if (isStaleCloud) "Last seen ${effectiveRemote!!.timeAgoFormatted} (${effectiveRemote.user}) • Check power" else "Viewing ${effectiveRemote!!.user}'s live feed • ${effectiveRemote.timeAgoFormatted}",
-                                    fontSize = 9.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -252,7 +276,7 @@ fun HomeScreen(
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 modifier = Modifier.height(26.dp)
                             ) {
-                                Text("Clear", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text("Clear", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                         } else {
                             Surface(
@@ -261,7 +285,7 @@ fun HomeScreen(
                             ) {
                                 Text(
                                     text = if (isStaleCloud) "OFFLINE" else "CLOUD LIVE",
-                                    fontSize = 9.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isStaleCloud) MaterialTheme.colorScheme.error else CyberCyan,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -401,13 +425,30 @@ fun HomeScreen(
         } else {
             "Connecting..."
         }
-        Text(
-            text = footerText,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 9.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isStaleLocal) {
+                Surface(
+                    color = WarningAmber.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "STALE",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = WarningAmber,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = footerText,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isStaleLocal) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+        }
+    }
     }
 }
 
@@ -438,7 +479,6 @@ private fun MetricCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.labelSmall,
-                    fontSize = 9.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
@@ -550,7 +590,7 @@ private fun HeroHashrateCard(
                 ) {
                     Text(
                         text = if (isStaleCloud) "NO SIGNAL" else if (isCloudMode) "CLOUD LIVE" else if (isOnline) "ONLINE" else "OFFLINE",
-                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = if (isStaleCloud) MaterialTheme.colorScheme.error else if (isCloudMode) CyberCyan else if (isOnline) AntminerEmerald else MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -586,7 +626,6 @@ private fun HeroHashrateCard(
                     Text(
                         text = "Avg Hashrate",
                         style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
@@ -602,7 +641,6 @@ private fun HeroHashrateCard(
                     Text(
                         text = "Ideal Target",
                         style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
