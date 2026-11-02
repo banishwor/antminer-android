@@ -25,7 +25,7 @@ enum class ThemeMode {
  * Screens should read this instead of hard-coding FontFamily.Monospace so
  * the same layout speaks both theme languages.
  */
-val LocalDataFontFamily = staticCompositionLocalOf { FontFamily.Monospace }
+val LocalDataFontFamily = staticCompositionLocalOf<FontFamily> { FontFamily.Monospace }
 
 // Control Room: sharp, technical corners.
 private val DarkShapes = Shapes(
