@@ -25,12 +25,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.alerts.MinerAlert
+import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
+import com.example.antminerconnectiontest.domain.model.FleetSorting
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.theme.*
-import com.example.antminerconnectiontest.ui.components.HashrateRaceCard
+import com.example.antminerconnectiontest.ui.components.FleetListCard
 import com.example.antminerconnectiontest.ui.components.MinerDataState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.example.antminerconnectiontest.ui.components.MinerDataStateCard
@@ -49,6 +51,7 @@ fun HomeScreen(
     minerHashrates: Map<String, Double> = emptyMap(),
     data: MinerDashboardData?,
     alerts: List<MinerAlert>,
+    cloudConfig: CloudSyncConfig = CloudSyncConfig(),
     themeMode: ThemeMode,
     isRefreshing: Boolean,
     dashboardError: String? = null,
@@ -149,6 +152,16 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
+            // 0. Fleet header: total hashrate of the online fleet and the
+            // cloud account chip (who this phone relays as, and whether
+            // the relay is on) — the fleet is the home, the selected
+            // machine's dashboard follows below.
+            FleetHeaderCard(
+                mergedMiners = mergedMiners,
+                cloudConfig = cloudConfig,
+                nowMs = nowMs
+            )
+
             // 1. Miner Header Bar (Compact & Static)
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -191,7 +204,7 @@ fun HomeScreen(
                                         Text(
                                             text = profile.workerName,
                                             style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = LocalDataFontFamily.current,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -203,7 +216,7 @@ fun HomeScreen(
                                 Text(
                                     text = if (isCloudMode) "Cloud Owner: ${effectiveRemote!!.user}" else profile.host,
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = LocalDataFontFamily.current,
                                     color = if (isCloudMode) CyberCyan else MaterialTheme.colorScheme.primary
                                 )
                                 if (!isCloudMode && profile.location.isNotBlank() && profile.location != "Default Location") {
@@ -273,13 +286,13 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = if (isStaleCloud) "⚠️ CLOUD SIGNAL LOST (>2m)" else "CLOUD FARM VIEW",
+                                    text = if (isStaleCloud) "⚠️ REMOTE — CLOUD SIGNAL LOST (>2m)" else "REMOTE — CLOUD FARM VIEW",
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isStaleCloud) MaterialTheme.colorScheme.error else CyberCyan
                                 )
                                 Text(
-                                    text = if (isStaleCloud) "Last seen ${effectiveRemote!!.timeAgoFormatted} (${effectiveRemote.user}) • Check power" else "Viewing ${effectiveRemote!!.user}'s live feed • ${effectiveRemote.timeAgoFormatted}",
+                                    text = if (isStaleCloud) "Last seen ${effectiveRemote!!.timeAgoFormatted} (${effectiveRemote.user}) • Check power" else "Viewing ${effectiveRemote!!.user}'s feed • Updated ${effectiveRemote.timeAgoFormatted} • via relay",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -454,7 +467,9 @@ fun HomeScreen(
                 val totalHw = summary?.hwAll ?: stats?.totalHwErrors ?: 0L
                 MetricCard(
                     title = "HW Errors",
-                    value = if (isCloudMode) "0" else "$totalHw",
+                    // The relay does not carry HW error counts — show the
+                    // honest unknown, never a fabricated zero.
+                    value = if (isCloudMode) "--" else "$totalHw",
                     icon = Icons.Default.BugReport,
                     modifier = Modifier.weight(1f),
                     accentColor = if (totalHw > 100) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
@@ -468,15 +483,32 @@ fun HomeScreen(
                 )
             }
 
-            // 5. Live Hashrate Race Leaderboard (Only renders when 2+ miners exist!)
-            HashrateRaceCard(
-                activeProfile = profile,
+            // 5. Combined fleet list: local + remote in one sorted list.
+            FleetListCard(
                 mergedMiners = mergedMiners,
+                activeProfile = profile,
                 selectedRemoteMinerId = selectedRemoteMiner?.id,
+                activePoolBrand = FleetSorting.poolBrandFromUrl(
+                    data?.pools?.firstOrNull { it.priority == 0 }?.url
+                        ?: data?.pools?.firstOrNull()?.url
+                ),
+                activeTempC = stats?.maxChipTemp,
                 onSelectProfile = onSelectMinerProfile,
                 onSelectRemoteMiner = onSelectRemoteMiner,
                 onAddNewMiner = onAddNewMiner
             )
+
+            // In cloud mode the relay cannot supply chain-level detail or
+            // logs — say so where the numbers are, instead of implying
+            // the sections below describe this machine.
+            if (isCloudMode) {
+                Text(
+                    text = "Chain details and logs for this machine are available on location only — the relay carries hashrate, temperature, fan and status.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+            }
         }
 
         // 6. Footer Sync Timestamp (Always at bottom)
@@ -515,6 +547,96 @@ fun HomeScreen(
 }
 
 @Composable
+private fun FleetHeaderCard(
+    mergedMiners: List<MergedMinerEntry>,
+    cloudConfig: CloudSyncConfig,
+    nowMs: Long
+) {
+    val rows = remember(mergedMiners, nowMs) {
+        FleetSorting.sortEntries(mergedMiners, nowMs)
+    }
+    val totalTh = FleetSorting.fleetTotalTh(rows)
+    val onlineCount = rows.count { it.isOnline }
+    val relayOn = cloudConfig.isSyncEnabled
+    val accountLabel = when {
+        cloudConfig.userName.isNotBlank() -> "${cloudConfig.userName} · Relay ${if (relayOn) "ON" else "OFF"}"
+        relayOn -> "Relay ON · no user name set"
+        else -> "Relay OFF"
+    }
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = SolidColor(MaterialTheme.colorScheme.outline)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "FLEET HASHRATE · $onlineCount/${rows.size} ONLINE",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = if (totalTh > 0.0) String.format(Locale.US, "%.1f", totalTh) else "--",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = LocalDataFontFamily.current,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "TH/s",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+            }
+            Surface(
+                color = if (relayOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(6.dp),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = SolidColor(if (relayOn) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = null,
+                        tint = if (relayOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = accountLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = LocalDataFontFamily.current,
+                        fontWeight = FontWeight.Bold,
+                        color = if (relayOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun MetricCard(
     title: String,
     value: String,
@@ -547,7 +669,7 @@ private fun MetricCard(
                     text = value,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = LocalDataFontFamily.current,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -666,7 +788,7 @@ private fun HeroHashrateCard(
                 text = if (hashrate > 0.0) String.format(Locale.US, "%.2f", hashrate) else "--",
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = LocalDataFontFamily.current,
                 color = MaterialTheme.colorScheme.onSurface
             )
 
@@ -694,7 +816,7 @@ private fun HeroHashrateCard(
                         text = if (avgRate > 0.0) String.format(Locale.US, "%.1f TH/s", avgRate) else "--",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = LocalDataFontFamily.current,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -709,7 +831,7 @@ private fun HeroHashrateCard(
                         text = String.format(Locale.US, "%.1f TH/s", idealRate),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = LocalDataFontFamily.current,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }

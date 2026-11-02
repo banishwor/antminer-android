@@ -141,6 +141,7 @@ fun MainDashboardScreen(
                                 minerHashrates = uiState.minerHashrates,
                                 data = uiState.dashboardData,
                                 alerts = uiState.activeAlerts,
+                                cloudConfig = uiState.cloudConfig,
                                 themeMode = uiState.themeMode,
                                 isRefreshing = uiState.isRefreshing,
                                 dashboardError = uiState.dashboardError,
