@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.antminerconnectiontest.theme.panelShape
 
 /** Which dashboard data state [MinerDataStateCard] should present. */
 enum class MinerDataState {
@@ -46,7 +47,7 @@ fun MinerDataStateCard(
     val accent = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(accent)),
         modifier = modifier.fillMaxWidth()

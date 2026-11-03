@@ -60,6 +60,27 @@ fun AsicChipMatrix(
 
     var selectedChip by remember { mutableStateOf<AsicChipInfo?>(null) }
 
+    // Grouped Sheets (v0.4.0): the matrix goes monochrome like the
+    // mockup — healthy cells are the flat grey cell colour, a dead
+    // chip is a solid text-colour cell, missing is the hairline tone.
+    // Violet keeps its emerald/ruby/slate cells.
+    val glassSettings = LocalGlassSettings.current
+    val okCellColor = if (glassSettings.isGlass) {
+        GroupedSheetsSpec.chipCell(glassSettings.isDark)
+    } else {
+        AntminerEmerald
+    }
+    val errorCellColor = if (glassSettings.isGlass) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        ErrorRuby
+    }
+    val missingCellColor = if (glassSettings.isGlass) {
+        MaterialTheme.colorScheme.outline
+    } else {
+        Color(0xFF334155)
+    }
+
     val operationalCount = chips.count { it.state == AsicChipState.OPERATIONAL }
     val defectiveCount = chips.count { it.state == AsicChipState.DEFECTIVE }
 
@@ -89,7 +110,7 @@ fun AsicChipMatrix(
                     Text(
                         text = "$operationalCount / $totalChips Healthy",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (defectiveCount > 0) WarningAmber else AntminerEmerald,
+                        color = if (defectiveCount > 0) accentWarn() else accentOk(),
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -99,9 +120,9 @@ fun AsicChipMatrix(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendItem(color = AntminerEmerald, label = "OK")
+                    LegendItem(color = okCellColor, label = "OK")
                     if (defectiveCount > 0) {
-                        LegendItem(color = ErrorRuby, label = "Error")
+                        LegendItem(color = errorCellColor, label = "Error")
                     }
                 }
             }
@@ -143,9 +164,9 @@ fun AsicChipMatrix(
                     val cy = r * cellHeight + cellHeight / 2f
 
                     val chipColor = when (chip.state) {
-                        AsicChipState.OPERATIONAL -> AntminerEmerald
-                        AsicChipState.DEFECTIVE -> ErrorRuby
-                        AsicChipState.MISSING -> Color(0xFF334155)
+                        AsicChipState.OPERATIONAL -> okCellColor
+                        AsicChipState.DEFECTIVE -> errorCellColor
+                        AsicChipState.MISSING -> missingCellColor
                     }
 
                     // Outer halo

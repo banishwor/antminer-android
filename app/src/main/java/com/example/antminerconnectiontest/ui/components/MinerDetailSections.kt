@@ -1,6 +1,7 @@
 package com.example.antminerconnectiontest.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +27,11 @@ import com.example.antminerconnectiontest.domain.model.TelemetryCodec
 import com.example.antminerconnectiontest.domain.model.toRemoteChain
 import com.example.antminerconnectiontest.theme.AntminerEmerald
 import com.example.antminerconnectiontest.theme.LocalDataFontFamily
-import com.example.antminerconnectiontest.theme.WarningAmber
+import com.example.antminerconnectiontest.theme.GroupedSheetsSpec
+import com.example.antminerconnectiontest.theme.LocalGlassSettings
+import com.example.antminerconnectiontest.theme.accentWarn
+import com.example.antminerconnectiontest.theme.panelBorder
+import com.example.antminerconnectiontest.theme.panelShape
 import java.util.Locale
 
 /**
@@ -200,23 +205,61 @@ fun localMinerDetailUi(
  */
 @Composable
 fun SourceChip(isRemote: Boolean) {
+    // Grouped Sheets (v0.4.0): the REMOTE chip is the blue badge —
+    // accent text on the accent tint; LIVE stays the neutral grey
+    // chip. Violet keeps one neutral chip for both.
+    val glass = LocalGlassSettings.current.isGlass
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = if (glass && isRemote) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
         shape = RoundedCornerShape(6.dp)
     ) {
         Text(
             text = if (isRemote) "REMOTE" else "LIVE",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (glass && isRemote) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }
 
-/** Small status dot: green online, red offline/stale. Status colour only. */
+/**
+ * Small status dot. Violet: accent online, red offline/stale.
+ * Grouped Sheets (v0.4.0): monochrome per the mockup — a solid
+ * text-colour dot online, a HOLLOW dot (tertiary ring) offline; the
+ * word next to it (Online / Offline) carries the meaning.
+ */
 @Composable
 fun StatusDot(isOnline: Boolean, isStale: Boolean = false, size: Int = 9) {
+    val glass = LocalGlassSettings.current
+    if (glass.isGlass) {
+        val online = isOnline && !isStale
+        Box(
+            modifier = Modifier
+                .size(size.dp)
+                .clip(CircleShape)
+                .then(
+                    if (online) {
+                        Modifier.background(MaterialTheme.colorScheme.onSurface)
+                    } else {
+                        Modifier.border(
+                            1.5.dp,
+                            if (glass.isDark) GroupedSheetsSpec.DarkTertiary else GroupedSheetsSpec.LightTertiary,
+                            CircleShape
+                        )
+                    }
+                )
+        )
+        return
+    }
     Box(
         modifier = Modifier
             .size(size.dp)
@@ -242,8 +285,9 @@ fun SelectedMachineHeader(
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = modifier.fillMaxWidth()
     ) {
         Row(
@@ -348,8 +392,9 @@ fun MinerHardwareSections(detail: MinerDetailUi) {
 fun MinerDetailTempsSection(detail: MinerDetailUi) {
     SectionTitle("Temperatures")
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -370,8 +415,9 @@ fun MinerDetailTempsSection(detail: MinerDetailUi) {
 fun MinerDetailSessionSection(detail: MinerDetailUi) {
     SectionTitle("Session")
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -410,8 +456,9 @@ fun MinerDetailFansSection(detail: MinerDetailUi) {
         UnavailableSection("Fan list", "Per-fan speeds are not in this data.")
     } else {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = panelShape(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -420,7 +467,7 @@ fun MinerDetailFansSection(detail: MinerDetailUi) {
             ) {
                 if (detail.slowFanCount > 0) {
                     Surface(
-                        color = WarningAmber.copy(alpha = 0.15f),
+                        color = accentWarn().copy(alpha = 0.15f),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -431,7 +478,7 @@ fun MinerDetailFansSection(detail: MinerDetailUi) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = WarningAmber,
+                                tint = accentWarn(),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -460,7 +507,7 @@ fun MinerDetailFansSection(detail: MinerDetailUi) {
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             fontFamily = LocalDataFontFamily.current,
-                            color = if (rpm < TelemetryCodec.SLOW_FAN_RPM) WarningAmber else MaterialTheme.colorScheme.onSurface
+                            color = if (rpm < TelemetryCodec.SLOW_FAN_RPM) accentWarn() else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -477,8 +524,9 @@ fun MinerDetailPoolSection(detail: MinerDetailUi) {
         UnavailableSection("Primary pool", "Pool endpoint and share counts are not in this data.")
     } else {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = panelShape(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -534,8 +582,9 @@ fun MinerDetailHealthSection(detail: MinerDetailUi) {
 @Composable
 fun MinerChainCard(chain: RemoteChainSnapshot) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -610,6 +659,19 @@ fun MinerChainCard(chain: RemoteChainSnapshot) {
 
 @Composable
 fun SectionTitle(text: String) {
+    // Grouped Sheets (v0.4.0): section titles become the mockup's
+    // group labels — small, uppercase, secondary grey, indented
+    // relative to their panel.
+    if (LocalGlassSettings.current.isGlass) {
+        Text(
+            text = text.uppercase(),
+            fontSize = GroupedSheetsSpec.GroupLabelTextSize,
+            letterSpacing = GroupedSheetsSpec.GroupLabelLetterSpacing,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, bottom = 2.dp)
+        )
+        return
+    }
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium,
@@ -638,6 +700,24 @@ fun DetailMetric(label: String, value: String) {
 
 @Composable
 fun HealthChip(label: String, ok: Boolean) {
+    // Grouped Sheets (v0.4.0): OK = neutral grey chip; Issue = SOLID
+    // text-colour chip with background-colour text (the mockup's
+    // .healthchip.issue) — the word "Issue" carries the meaning.
+    if (LocalGlassSettings.current.isGlass) {
+        Surface(
+            color = if (ok) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.onSurface,
+            shape = RoundedCornerShape(6.dp)
+        ) {
+            Text(
+                text = "$label: ${if (ok) "OK" else "Issue"}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.background,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        return
+    }
     Surface(
         color = if (ok) AntminerEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
         shape = RoundedCornerShape(6.dp)

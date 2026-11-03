@@ -37,7 +37,7 @@ fun ShareHealthDonut(
     }
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = CardDefaults.outlinedCardBorder().copy(
             brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline)
@@ -51,6 +51,19 @@ fun ShareHealthDonut(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Arc colours resolve per style: Violet emerald/ruby over
+            // a slate track; Grouped Sheets (v0.4.0) follows the
+            // mockup donut — blue accepted, #55555C rejected, pale
+            // grey track.
+            val isGrouped = LocalGlassSettings.current.isGlass
+            val acceptedColor = accentOk()
+            val rejectedColor = if (isGrouped) GroupedSheetsSpec.DonutRejected else ErrorRuby
+            val trackColor = if (isGrouped) {
+                GroupedSheetsSpec.DonutStale
+            } else {
+                Color(0xFF1E293B).copy(alpha = 0.5f)
+            }
+
             // Left: Donut Chart with Center Rate
             Box(
                 modifier = Modifier.size(100.dp),
@@ -64,7 +77,7 @@ fun ShareHealthDonut(
 
                     // Background Track
                     drawArc(
-                        color = Color(0xFF1E293B).copy(alpha = 0.5f),
+                        color = trackColor,
                         startAngle = 0f,
                         sweepAngle = 360f,
                         useCenter = false,
@@ -77,7 +90,7 @@ fun ShareHealthDonut(
                         val acceptedSweep = (acceptanceRate / 100f * 360f).toFloat()
                         // Accepted Arc (Emerald)
                         drawArc(
-                            color = AntminerEmerald,
+                            color = acceptedColor,
                             startAngle = -90f,
                             sweepAngle = acceptedSweep,
                             useCenter = false,
@@ -90,7 +103,7 @@ fun ShareHealthDonut(
                         if (totalRejected > 0) {
                             val rejectedSweep = (totalRejected.toFloat() / totalShares.toFloat() * 360f)
                             drawArc(
-                                color = ErrorRuby,
+                                color = rejectedColor,
                                 startAngle = -90f + acceptedSweep,
                                 sweepAngle = rejectedSweep,
                                 useCenter = false,
@@ -102,7 +115,7 @@ fun ShareHealthDonut(
                     } else {
                         // Default full green track
                         drawArc(
-                            color = AntminerEmerald,
+                            color = acceptedColor,
                             startAngle = -90f,
                             sweepAngle = 360f,
                             useCenter = false,
@@ -127,7 +140,7 @@ fun ShareHealthDonut(
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
-                        color = AntminerEmerald,
+                        color = acceptedColor,
                         letterSpacing = 0.5.sp
                     )
                 }
@@ -147,9 +160,9 @@ fun ShareHealthDonut(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                ShareStatRow(label = "Accepted Shares", value = "$totalAccepted", color = AntminerEmerald)
-                ShareStatRow(label = "Rejected Shares", value = "$totalRejected", color = if (totalRejected > 0) ErrorRuby else MaterialTheme.colorScheme.onSurfaceVariant)
-                ShareStatRow(label = "Total Submitted", value = "$totalShares", color = CyberCyan)
+                ShareStatRow(label = "Accepted Shares", value = "$totalAccepted", color = acceptedColor)
+                ShareStatRow(label = "Rejected Shares", value = "$totalRejected", color = if (totalRejected > 0) rejectedColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                ShareStatRow(label = "Total Submitted", value = "$totalShares", color = accentData())
             }
         }
     }

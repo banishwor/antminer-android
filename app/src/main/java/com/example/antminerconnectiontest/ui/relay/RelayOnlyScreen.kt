@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.theme.LocalGlassSettings
 import com.example.antminerconnectiontest.theme.WarningAmber
+import com.example.antminerconnectiontest.theme.panelShape
 import com.example.antminerconnectiontest.theme.solidVioletColorScheme
 import kotlinx.coroutines.delay
 
@@ -317,7 +318,7 @@ fun RelayOnlyScreen(
 @Composable
 private fun RelayPanel(content: @Composable ColumnScope.() -> Unit) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {

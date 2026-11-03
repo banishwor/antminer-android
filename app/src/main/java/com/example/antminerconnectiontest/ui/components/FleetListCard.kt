@@ -23,9 +23,11 @@ import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import com.example.antminerconnectiontest.theme.LocalDataFontFamily
 import com.example.antminerconnectiontest.theme.LocalGlassSettings
 import com.example.antminerconnectiontest.theme.glassEdgeBrush
+import com.example.antminerconnectiontest.theme.panelShape
 import kotlinx.coroutines.delay
 
 /**
@@ -101,29 +103,63 @@ fun FleetListCard(
             }
         }
 
-        rows.forEach { row ->
-            FleetRowItem(
-                row = row,
-                isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
-                nowMs = nowMs,
-                onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
-                onClick = {
-                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    val entry = row.entry
-                    val local = entry.localProfile
-                    val remote = entry.remoteSnapshot
-                    when {
-                        // Display data for this row is the snapshot:
-                        // select it (the ViewModel activates the local
-                        // profile too for merged machines, so live
-                        // local data can take over once fetched).
-                        remote != null && !entry.hasLiveLocalData && entry.localHashrateTh == null ->
-                            onSelectRemoteMiner(remote)
-                        local != null -> onSelectProfile(local)
-                        remote != null -> onSelectRemoteMiner(remote)
+        val onRowClick: (FleetRow) -> Unit = { row ->
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            val entry = row.entry
+            val local = entry.localProfile
+            val remote = entry.remoteSnapshot
+            when {
+                // Display data for this row is the snapshot: select it
+                // (the ViewModel activates the local profile too for
+                // merged machines, so live local data can take over
+                // once fetched).
+                remote != null && !entry.hasLiveLocalData && entry.localHashrateTh == null ->
+                    onSelectRemoteMiner(remote)
+                local != null -> onSelectProfile(local)
+                remote != null -> onSelectRemoteMiner(remote)
+            }
+        }
+
+        if (LocalGlassSettings.current.isGlass) {
+            // Grouped Sheets (v0.4.0): the fleet is ONE panel — rows
+            // separated by hairlines inset from the left edge, the
+            // selected row washed with the accent tint (mockup
+            // .fleetrow.selected).
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = panelShape(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    rows.forEachIndexed { index, row ->
+                        FleetRowContent(
+                            row = row,
+                            isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
+                            nowMs = nowMs,
+                            onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
+                            onClick = { onRowClick(row) },
+                            grouped = true
+                        )
+                        if (index < rows.lastIndex) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                modifier = Modifier.padding(start = 16.dp)
+                            )
+                        }
                     }
                 }
-            )
+            }
+        } else {
+            rows.forEach { row ->
+                FleetRowItem(
+                    row = row,
+                    isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
+                    nowMs = nowMs,
+                    onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
+                    onClick = { onRowClick(row) }
+                )
+            }
         }
     }
 }
@@ -150,11 +186,12 @@ private fun FleetRowItem(
     onEditNickname: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    val ui = FleetSorting.rowUi(row, nowMs)
-    val dataFont = LocalDataFontFamily.current
     // Liquid Glass (v0.3.0): rows get the translucent fill (from the
     // glass colour scheme) + the specular edge highlight — but NO
     // individual blur; live blur is scoped to the hero + tab bar.
+    // (Since v0.4.0 the Glass style renders the grouped single panel
+    // instead — see FleetListCard — so this per-row card is the
+    // Violet path.)
     val glass = LocalGlassSettings.current
 
     Surface(
@@ -162,20 +199,53 @@ private fun FleetRowItem(
         // the selected row is the only tinted one.
         color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
         else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(glass.isDark)) else null,
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onEditNickname != null) {
-                    Modifier.combinedClickable(onClick = onClick, onLongClick = onEditNickname)
-                } else {
-                    Modifier.clickable { onClick() }
-                }
-            )
+        modifier = Modifier.fillMaxWidth()
     ) {
+        FleetRowContent(
+            row = row,
+            isActive = isActive,
+            nowMs = nowMs,
+            onEditNickname = onEditNickname,
+            onClick = onClick,
+            grouped = false
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FleetRowContent(
+    row: FleetRow,
+    isActive: Boolean,
+    nowMs: Long,
+    onEditNickname: (() -> Unit)? = null,
+    onClick: () -> Unit,
+    grouped: Boolean
+) {
+    val ui = FleetSorting.rowUi(row, nowMs)
+    val dataFont = LocalDataFontFamily.current
+    val glass = LocalGlassSettings.current
+
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (grouped && isActive) {
+                        Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
+                    if (onEditNickname != null) {
+                        Modifier.combinedClickable(onClick = onClick, onLongClick = onEditNickname)
+                    } else {
+                        Modifier.clickable { onClick() }
+                    }
+                )
+                .padding(horizontal = if (grouped) 16.dp else 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Status colour only: green online, red offline.
@@ -225,7 +295,15 @@ private fun FleetRowItem(
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 softWrap = false,
-                color = if (ui.isOnline) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+                color = if (ui.isOnline) {
+                    MaterialTheme.colorScheme.onSurface
+                } else if (glass.isGlass) {
+                    // Grouped Sheets: the offline label is secondary
+                    // grey — the word "Offline" carries the state.
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                }
             )
             if (onEditNickname != null) {
                 IconButton(
@@ -241,5 +319,4 @@ private fun FleetRowItem(
                 }
             }
         }
-    }
 }

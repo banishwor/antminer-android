@@ -53,12 +53,17 @@ fun InteractiveHashrateChart(
     var viewMode by remember { mutableStateOf(ChartViewMode.TOTAL) }
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
-    val chainColors = listOf(
-        AntminerEmerald, // Chain 1
-        CyberCyan,       // Chain 2
-        ElectricBlue,    // Chain 3
-        WarningAmber     // Chain 4 if any
-    )
+    // Series colours resolve per style (theme/StatusColors): Violet
+    // keeps its violet-family series; Grouped Sheets draws the total
+    // in Apple blue over the mockup's grey chain lines.
+    val chainColors = chainSeriesColors()
+    val totalColor = accentOk()
+    val isGrouped = LocalGlassSettings.current.isGlass
+    val toggleSelectedText = if (isGrouped) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        Color(0xFF003919)
+    }
 
     // Calculate Y-scale bounds
     val allValues = remember(points, viewMode) {
@@ -89,7 +94,7 @@ fun InteractiveHashrateChart(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Surface(
-                    color = if (viewMode == ChartViewMode.TOTAL) AntminerEmerald else Color.Transparent,
+                    color = if (viewMode == ChartViewMode.TOTAL) totalColor else Color.Transparent,
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier.clickable { viewMode = ChartViewMode.TOTAL }
                 ) {
@@ -97,13 +102,13 @@ fun InteractiveHashrateChart(
                         text = "Total Hashrate",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (viewMode == ChartViewMode.TOTAL) Color(0xFF003919) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (viewMode == ChartViewMode.TOTAL) toggleSelectedText else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
 
                 Surface(
-                    color = if (viewMode == ChartViewMode.CHAINS) AntminerEmerald else Color.Transparent,
+                    color = if (viewMode == ChartViewMode.CHAINS) totalColor else Color.Transparent,
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier.clickable { viewMode = ChartViewMode.CHAINS }
                 ) {
@@ -111,7 +116,7 @@ fun InteractiveHashrateChart(
                         text = "3 Chains",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (viewMode == ChartViewMode.CHAINS) Color(0xFF003919) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (viewMode == ChartViewMode.CHAINS) toggleSelectedText else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -125,7 +130,7 @@ fun InteractiveHashrateChart(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
-                    color = AntminerEmerald
+                    color = totalColor
                 )
             } else {
                 Text(
@@ -204,7 +209,7 @@ fun InteractiveHashrateChart(
                     drawPath(
                         path = fillPath,
                         brush = Brush.verticalGradient(
-                            colors = listOf(AntminerEmerald.copy(alpha = 0.35f), Color.Transparent),
+                            colors = listOf(totalColor.copy(alpha = 0.35f), Color.Transparent),
                             startY = 0f,
                             endY = height
                         )
@@ -213,7 +218,7 @@ fun InteractiveHashrateChart(
                     // Line
                     drawPath(
                         path = path,
-                        color = AntminerEmerald,
+                        color = totalColor,
                         style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                     )
 
@@ -225,7 +230,7 @@ fun InteractiveHashrateChart(
                         val isSelected = selectedIndex == index
 
                         drawCircle(
-                            color = if (isSelected) Color.White else AntminerEmerald,
+                            color = if (isSelected) Color.White else totalColor,
                             radius = if (isSelected) 5.dp.toPx() else 3.dp.toPx(),
                             center = Offset(x, y)
                         )
@@ -234,7 +239,7 @@ fun InteractiveHashrateChart(
                     // Render Chain Breakdown (Chains 0..2)
                     val chainCount = points.firstOrNull()?.chainHashratesTh?.size ?: 0
                     for (c in 0 until chainCount) {
-                        val chainColor = chainColors.getOrElse(c) { AntminerEmerald }
+                        val chainColor = chainColors.getOrElse(c) { totalColor }
                         val path = Path()
 
                         points.forEachIndexed { index, point ->

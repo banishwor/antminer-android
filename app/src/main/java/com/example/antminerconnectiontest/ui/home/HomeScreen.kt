@@ -459,7 +459,7 @@ private fun HomeLoadingSkeleton() {
 @Composable
 private fun SkeletonCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -541,7 +541,7 @@ private fun SelectedMachineHero(
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(heroIsDark)) else null,
         modifier = Modifier.fillMaxWidth()
@@ -740,7 +740,7 @@ private fun NeedsPasswordCard(
     onClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.12f)),
         modifier = Modifier
             .fillMaxWidth()
@@ -803,7 +803,7 @@ private fun HomeCloudSetupCard(
     var userNameInput by remember(cloudConfig.userName) { mutableStateOf(cloudConfig.userName) }
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -910,7 +910,7 @@ private fun HomeCloudSetupCard(
 @Composable
 private fun HomeAddMinerCard(onOpenSetup: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -979,7 +979,7 @@ private fun FleetHeaderCard(
     // layer here — live blur is scoped to the hero + tab bar only.)
     val glass = LocalGlassSettings.current
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(isDark)) else null,
         modifier = Modifier.fillMaxWidth()

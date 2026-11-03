@@ -1,6 +1,8 @@
 package com.example.antminerconnectiontest.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -134,4 +136,17 @@ fun panelShape(): Shape =
         RoundedCornerShape(GroupedSheetsSpec.PanelRadius)
     } else {
         RoundedCornerShape(16.dp)
+    }
+
+/**
+ * The hairline border of a grouped panel (V3 mockup: panels are
+ * defined by a 1 dp hairline in the outline tone). Null in the Violet
+ * style, whose cards carry no border — matching their current look.
+ */
+@Composable
+fun panelBorder(): BorderStroke? =
+    if (LocalGlassSettings.current.isGlass) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    } else {
+        null
     }

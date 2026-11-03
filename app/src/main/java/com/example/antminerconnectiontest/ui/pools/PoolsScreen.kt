@@ -144,7 +144,7 @@ fun PoolsScreen(
         // Hashrate Performance Chart Card (Total vs 3 Chains with Touch Scrubbing)
         val chart = data?.chartData
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = panelShape(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = CardDefaults.outlinedCardBorder().copy(
                 brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline)
