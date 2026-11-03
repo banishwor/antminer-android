@@ -40,3 +40,17 @@ android {
 }
 
 // No dependencies block on purpose: the probe must run on the bare framework.
+//
+// AGP 9's built-in Kotlin still drags kotlin-stdlib onto the classpath of
+// every module it touches (observed: 3 dex files, ~890 KB APK for a
+// framework-only probe). android.builtInKotlin=false cannot help here —
+// Gradle reads only the ROOT gradle.properties, and flipping it there would
+// change :app's build too. Scoped to this module instead: exclude the
+// stdlib. The probe is pure Java and references no kotlin.* classes, so
+// nothing misses it.
+configurations.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-common")
+}
