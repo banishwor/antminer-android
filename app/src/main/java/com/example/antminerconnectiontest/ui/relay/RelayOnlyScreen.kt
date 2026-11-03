@@ -12,8 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.antminerconnectiontest.theme.AppStyle
 import com.example.antminerconnectiontest.theme.LocalGlassSettings
 import com.example.antminerconnectiontest.theme.WarningAmber
+import com.example.antminerconnectiontest.theme.groupedSheetsColorScheme
+import com.example.antminerconnectiontest.theme.panelBorder
 import com.example.antminerconnectiontest.theme.panelShape
 import com.example.antminerconnectiontest.theme.solidVioletColorScheme
 import kotlinx.coroutines.delay
@@ -42,8 +45,13 @@ data class RelayMinerLine(
  * Settings "Relay only" switch is on, this ONE plain screen replaces
  * the whole app — no tabs, no fleet list, no settings — because the
  * phone's job at a miner site is to be left alone and read quickly.
- * Deliberately plain Violet Material even when the Liquid Glass style
- * is selected: no glass, no blur, nothing decorative.
+ *
+ * v0.4.0: the screen adopts the selected style's OPAQUE design —
+ * with the Glass style selected it renders the V3 grouped design
+ * (grouped base, panels, blue accent) via
+ * [groupedSheetsColorScheme]; with Violet, the solid Violet scheme.
+ * Either way: no glass, no blur, nothing decorative — the fully
+ * opaque form only.
  *
  * Everything it shows is the relay's actual state: who it relays as,
  * the local miners and their upload state, the last successful upload
@@ -61,13 +69,15 @@ data class RelayMinerLine(
  * [RelayOnlyViewLogic] decides what is visible; the moment the first
  * real state lands, the skeletons swap to the real content.
  *
- * v0.3.3 also fixes the washed-out rendering: with the Liquid Glass
- * style selected, the app-wide colour scheme's surface slots are
- * translucent by design (they float over the shell's wallpaper), and
- * this screen draws no wallpaper — its cards came out translucent
- * over the bare window, low-contrast in both themes. The screen now
- * resolves the SOLID Violet scheme for the current darkness and
- * paints its own opaque background, whatever style is selected.
+ * v0.3.3 also fixes the washed-out rendering: the app-wide Liquid
+ * Glass scheme's surface slots were translucent by design (they
+ * floated over the shell's wallpaper), and this screen draws no
+ * wallpaper — its cards came out translucent over the bare window.
+ * The screen therefore resolves its own SOLID scheme for the
+ * current darkness and paints its own opaque background. (In
+ * v0.4.0 the app-wide grouped scheme is itself opaque; this screen
+ * still pins its own scheme so its rendering can never depend on
+ * shell translucency again.)
  */
 @Composable
 fun RelayOnlyScreen(
@@ -102,12 +112,19 @@ fun RelayOnlyScreen(
     )
     val isRelaying = visible.statusWord == "Relaying"
 
-    // Plain Violet, full contrast, whatever the selected style: the
-    // solid scheme for the resolved darkness (typography and shapes
-    // are inherited from the surrounding theme) over the screen's own
-    // opaque background.
-    val isDark = LocalGlassSettings.current.isDark
-    MaterialTheme(colorScheme = solidVioletColorScheme(isDark)) {
+    // Fully opaque, full contrast: the selected style's solid
+    // scheme for the resolved darkness (typography and shapes are
+    // inherited from the surrounding theme) over the screen's own
+    // opaque background. Grouped design when Glass is selected,
+    // solid Violet otherwise — never translucent, never blurred.
+    val glassSettings = LocalGlassSettings.current
+    val isDark = glassSettings.isDark
+    val relayScheme = if (glassSettings.style == AppStyle.LIQUID_GLASS) {
+        groupedSheetsColorScheme(isDark)
+    } else {
+        solidVioletColorScheme(isDark)
+    }
+    MaterialTheme(colorScheme = relayScheme) {
         Surface(
             color = MaterialTheme.colorScheme.background,
             modifier = Modifier.fillMaxSize()
@@ -240,7 +257,16 @@ fun RelayOnlyScreen(
                                     RelayMinerState.OFFLINE ->
                                         MaterialTheme.colorScheme.onSurfaceVariant to "OFFLINE"
                                     RelayMinerState.WAITING ->
-                                        WarningAmber to "WAITING"
+                                        // Amber in Violet; the
+                                        // text colour (tertiary slot)
+                                        // in the monochrome grouped
+                                        // design — "WAITING" is the
+                                        // meaning either way.
+                                        (if (glassSettings.style == AppStyle.LIQUID_GLASS) {
+                                            MaterialTheme.colorScheme.tertiary
+                                        } else {
+                                            WarningAmber
+                                        }) to "WAITING"
                                 }
                                 Surface(
                                     color = chipColor.copy(alpha = 0.14f),
@@ -320,6 +346,7 @@ private fun RelayPanel(content: @Composable ColumnScope.() -> Unit) {
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(

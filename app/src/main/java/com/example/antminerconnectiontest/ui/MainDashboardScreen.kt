@@ -174,11 +174,8 @@ fun MainDashboardScreen(
         when (route) {
             MainRoute.MAIN_SHELL -> {
             Box(modifier = Modifier.fillMaxSize()) {
-            if (isGlass) {
-                GlassWallpaper(isDark = isDarkResolved, tier = glassTier)
-            }
             Scaffold(
-                containerColor = if (isGlass) Color.Transparent else MaterialTheme.colorScheme.background,
+                containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
                     if (isGlass) {
                         GlassTabBarCapsule(isDark = isDarkResolved) {
@@ -539,18 +536,23 @@ private fun RowScope.DashboardNavItems(
     selectedTab: DashboardTab,
     onSelect: (DashboardTab) -> Unit
 ) {
+    val grouped = LocalGlassSettings.current.isGlass
     @Composable
     fun itemColors() = NavigationBarItemDefaults.colors(
         selectedIconColor = MaterialTheme.colorScheme.primary,
         selectedTextColor = MaterialTheme.colorScheme.primary,
-        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+        indicatorColor = if (grouped) {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        },
         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
     NavigationBarItem(
         selected = selectedTab == DashboardTab.HOME,
         onClick = { onSelect(DashboardTab.HOME) },
-        icon = { Icon(Icons.Default.Dashboard, contentDescription = "Home") },
+        icon = { Icon(if (grouped) Icons.Default.Home else Icons.Default.Dashboard, contentDescription = "Home") },
         label = { Text("Home") },
         colors = itemColors()
     )
@@ -564,38 +566,38 @@ private fun RowScope.DashboardNavItems(
     NavigationBarItem(
         selected = selectedTab == DashboardTab.POOLS,
         onClick = { onSelect(DashboardTab.POOLS) },
-        icon = { Icon(Icons.Default.Storage, contentDescription = "Pools") },
+        icon = { Icon(if (grouped) Icons.Default.Layers else Icons.Default.Storage, contentDescription = "Pools") },
         label = { Text("Pools") },
         colors = itemColors()
     )
     NavigationBarItem(
         selected = selectedTab == DashboardTab.LOGS,
         onClick = { onSelect(DashboardTab.LOGS) },
-        icon = { Icon(Icons.Default.Terminal, contentDescription = "Logs") },
+        icon = { Icon(if (grouped) Icons.Default.ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
         label = { Text("Logs") },
         colors = itemColors()
     )
     NavigationBarItem(
         selected = selectedTab == DashboardTab.DEVICE,
         onClick = { onSelect(DashboardTab.DEVICE) },
-        icon = { Icon(Icons.Default.Devices, contentDescription = "Settings") },
+        icon = { Icon(if (grouped) Icons.Default.Settings else Icons.Default.Devices, contentDescription = "Settings") },
         label = { Text("Settings") },
         colors = itemColors()
     )
 }
 
 /**
- * The Liquid Glass tab bar (v0.3.0, round-5 mockup): a floating
- * capsule — translucent fill, bright specular edge, soft shadow —
- * hovering over the wallpaper instead of a full-width bar. On FULL
- * tier devices a blurred copy of the wallpaper sits inside it (the
- * panel frosting what's behind it); on glass-lite the translucent
- * fill + edge alone carry the look, with no live blur anywhere.
+ * The floating dock (v0.4.0, V3 mockup): the ONE glass surface left
+ * in the app — a capsule with the mockup's frosted material
+ * ([GroupedSheetsSpec.dockBackground] / dockBorder) and a soft
+ * shadow, hovering over the grouped base instead of a full-width
+ * bar. On FULL-tier devices the live-blur backdrop still frosts
+ * what's behind it (GlassCapability rule unchanged); on glass-lite
+ * the translucent fill + border alone carry the look.
  *
  * Sizing (v0.3.2 bugfix): the capsule's geometry comes ONLY from
  * [GlassTabBarSpec] — a fixed bar height, screen width minus fixed
- * margins — and the backdrop inside it is a [GlassBackdrop], which
- * by construction cannot influence the size of anything. The v0.3.0
+ * margins — and nothing inside it may influence its size. The v0.3.0
  * version let the backdrop's `fillMaxSize()` resolve against the
  * Scaffold bottomBar slot's full-screen maxHeight, inflating the
  * capsule into a screen-filling pill that hid all content. It lives
@@ -618,23 +620,20 @@ private fun GlassTabBarCapsule(
     ) {
         Surface(
             shape = RoundedCornerShape(GlassTabBarSpec.CornerRadiusPercent),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, glassEdgeBrush(isDark)),
+            color = GroupedSheetsSpec.dockBackground(isDark),
+            border = BorderStroke(1.dp, GroupedSheetsSpec.dockBorder(isDark)),
             shadowElevation = 12.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(GlassTabBarSpec.Height)
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                GlassBackdrop()
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = GlassTabBarSpec.InnerHorizontalPadding),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = content
-                )
-            }
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = GlassTabBarSpec.InnerHorizontalPadding),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content
+            )
         }
     }
 }

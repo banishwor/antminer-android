@@ -27,6 +27,8 @@ import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.theme.*
+import com.example.antminerconnectiontest.ui.components.IosSegmentedControl
+import com.example.antminerconnectiontest.ui.components.IosSwitch
 import com.example.antminerconnectiontest.ui.components.SourceChip
 
 /**
@@ -120,6 +122,12 @@ fun DeviceScreen(
     // leaving the tab resets it — the expanded state is never kept.
     var isCloudExpanded by remember { mutableStateOf(false) }
 
+    // Grouped Sheets (v0.4.0): when the Glass style is selected this
+    // screen renders the V3 mockup's Settings — group labels, panels,
+    // iOS switches and segmented controls. The Violet style keeps the
+    // Option C flat list exactly as it was.
+    val grouped = LocalGlassSettings.current.isGlass
+
     val context = androidx.compose.ui.platform.LocalContext.current
     val installedVersion = remember {
         try {
@@ -155,14 +163,22 @@ fun DeviceScreen(
                 )
             }
             Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
+                color = if (grouped) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                },
                 shape = RoundedCornerShape(999.dp)
             ) {
                 Text(
                     text = "v$installedVersion",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = if (grouped) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    },
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
             }
@@ -178,6 +194,7 @@ fun DeviceScreen(
         // ── Selected machine (identity follows the fleet selection) ──
         if (selectedMachineName != null) {
             Spacer(modifier = Modifier.height(18.dp))
+            SettingsPanel {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -188,7 +205,13 @@ fun DeviceScreen(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .background(
+                            if (grouped) {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            }
+                        )
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -196,7 +219,11 @@ fun DeviceScreen(
                         text = selectedMachineName.trim().firstOrNull()?.uppercase() ?: "?",
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (grouped) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
                     )
                 }
                 Spacer(modifier = Modifier.width(11.dp))
@@ -237,6 +264,7 @@ fun DeviceScreen(
                 if (selectedMachineSerial.isNotBlank()) DeviceInfoRow("Serial Number", selectedMachineSerial)
                 if (selectedMachineIp.isNotBlank()) DeviceInfoRow("IP Address", selectedMachineIp)
             }
+            }
         }
 
         // ── Miners: Add a miner (ALWAYS) + saved miners ──────────────
@@ -245,20 +273,28 @@ fun DeviceScreen(
         // always present whatever the fleet state — it is an action,
         // not a setting. It opens the same add-miner flow as Home's
         // card and the fleet header's "+ Add Unit".
-        DeviceListRow(
-            icon = Icons.Default.Add,
-            title = "Add a miner",
-            subtitle = "Scan or enter an IP — on the miner's Wi-Fi, known miners connect by themselves",
-            onClick = onAddNewMiner,
-            trailing = {
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        SettingsPanel {
+            DeviceListRow(
+                icon = Icons.Default.Add,
+                title = "Add a miner",
+                subtitle = if (grouped) {
+                    "Enter an IP — on the miner's Wi-Fi, known miners connect by themselves"
+                } else {
+                    "Scan or enter an IP — on the miner's Wi-Fi, known miners connect by themselves"
+                },
+                onClick = onAddNewMiner,
+                trailing = {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+        }
+        if (!grouped) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
 
         val profilesToShow = if (savedProfiles.isEmpty()) listOfNotNull(profile) else savedProfiles
         if (profilesToShow.isEmpty()) {
@@ -269,13 +305,18 @@ fun DeviceScreen(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp)
             )
         } else {
-            Text(
-                text = "Saved on this phone (${profilesToShow.size})",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp)
-            )
+            if (!grouped) {
+                Text(
+                    text = "Saved on this phone (${profilesToShow.size})",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            SettingsPanel {
             profilesToShow.forEachIndexed { index, item ->
                 val isActive = item.id == profile?.id
                 Row(
@@ -355,13 +396,15 @@ fun DeviceScreen(
                     }
                 }
                 if (index < profilesToShow.lastIndex) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    SettingsRowDivider()
                 }
+            }
             }
         }
 
         // ── Relay & Cloud ────────────────────────────────────────────
         DeviceSectionLabel("Relay & Cloud")
+        SettingsPanel {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -382,14 +425,14 @@ fun DeviceScreen(
                     if (relayEnabled) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
-                            color = if (isCloudConnected) AntminerEmerald.copy(alpha = 0.2f) else WarningAmber.copy(alpha = 0.2f),
+                            color = if (isCloudConnected) accentOk().copy(alpha = 0.2f) else accentWarn().copy(alpha = 0.2f),
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
                                 text = if (isCloudConnected) "CONNECTED" else "SYNC ON",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isCloudConnected) AntminerEmerald else WarningAmber,
+                                color = if (isCloudConnected) accentOk() else accentWarn(),
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                             )
                         }
@@ -410,7 +453,7 @@ fun DeviceScreen(
             // relaying 24/7 in the background. OFF = no uploads,
             // background relay stopped. Viewing remote machines works
             // either way.
-            Switch(
+            SettingsSwitch(
                 checked = relayEnabled,
                 onCheckedChange = { newValue ->
                     relayEnabled = newValue
@@ -428,6 +471,9 @@ fun DeviceScreen(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+        if (grouped) {
+            SettingsRowDivider()
         }
         // Relay only (v0.3.0): its own compact row UNDER the Relay
         // row, visible WITHOUT expanding the section — one switch +
@@ -455,17 +501,19 @@ fun DeviceScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Switch(
+            SettingsSwitch(
                 checked = relayOnlyMode,
                 onCheckedChange = onSetRelayOnlyMode
             )
         }
-        Text(
-            text = "Finish setup first — relay name and miners — then flip this on and leave the phone at the site.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
+        if (!grouped) {
+            Text(
+                text = "Finish setup first — relay name and miners — then flip this on and leave the phone at the site.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
         AnimatedVisibility(visible = isCloudExpanded) {
             Column(
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -494,11 +542,11 @@ fun DeviceScreen(
                 // Test Result Badge
                 if (!cloudTestMessage.isNullOrBlank()) {
                     Surface(
-                        color = if (isCloudConnected) AntminerEmerald.copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer,
+                        color = if (isCloudConnected) accentOk().copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer,
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(
                             1.dp,
-                            if (isCloudConnected) AntminerEmerald else MaterialTheme.colorScheme.error
+                            if (isCloudConnected) accentOk() else MaterialTheme.colorScheme.error
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -509,7 +557,7 @@ fun DeviceScreen(
                             Icon(
                                 imageVector = if (isCloudConnected) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
                                 contentDescription = null,
-                                tint = if (isCloudConnected) AntminerEmerald else MaterialTheme.colorScheme.error,
+                                tint = if (isCloudConnected) accentOk() else MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -562,10 +610,30 @@ fun DeviceScreen(
                 }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
+        if (grouped) {
+            // The mockup's state-aware note under the relay panel.
+            Text(
+                text = when {
+                    !relayEnabled ->
+                        "Relay is off — nothing is uploaded from this phone. Watching remote miners still works."
+                    cloudConfig.userName.isBlank() ->
+                        "Set your relay name above to start uploading."
+                    else ->
+                        "Ready — relaying as ${cloudConfig.userName} · " +
+                            "${profilesToShow.size} local ${if (profilesToShow.size == 1) "miner" else "miners"} uploading."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+            )
+        } else {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
 
         // ── Appearance ───────────────────────────────────────────────
         DeviceSectionLabel("Appearance")
+        SettingsPanel {
         // Style (v0.3.0): ONE compact row — label + two-option
         // selector — per the user's instruction that the style change
         // must not take much vertical space. The Dark/Light/System
@@ -591,28 +659,39 @@ fun DeviceScreen(
                         AppStyle.VIOLET -> "Violet — the solid theme"
                         AppStyle.LIQUID_GLASS ->
                             if (glassTier == GlassTier.LITE) {
-                                "Liquid Glass — lighter glass on this phone (no live blur)"
+                                "Grouped sheets — flat panels, blue accent · lighter dock on this phone"
                             } else {
-                                "Liquid Glass — frosted panels over a wallpaper"
+                                "Grouped sheets — flat panels, Apple blue accent, glass dock"
                             }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ThemeOptionButton(
-                    label = "Violet",
-                    icon = Icons.Default.Palette,
-                    isSelected = appStyle == AppStyle.VIOLET,
-                    onClick = { onSetAppStyle(AppStyle.VIOLET) }
+            if (grouped) {
+                IosSegmentedControl(
+                    options = listOf("Violet", "Glass"),
+                    selectedIndex = if (appStyle == AppStyle.VIOLET) 0 else 1,
+                    onSelect = { index ->
+                        onSetAppStyle(if (index == 0) AppStyle.VIOLET else AppStyle.LIQUID_GLASS)
+                    },
+                    modifier = Modifier.width(158.dp)
                 )
-                ThemeOptionButton(
-                    label = "Glass",
-                    icon = Icons.Default.BlurOn,
-                    isSelected = appStyle == AppStyle.LIQUID_GLASS,
-                    onClick = { onSetAppStyle(AppStyle.LIQUID_GLASS) }
-                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ThemeOptionButton(
+                        label = "Violet",
+                        icon = Icons.Default.Palette,
+                        isSelected = appStyle == AppStyle.VIOLET,
+                        onClick = { onSetAppStyle(AppStyle.VIOLET) }
+                    )
+                    ThemeOptionButton(
+                        label = "Glass",
+                        icon = Icons.Default.BlurOn,
+                        isSelected = appStyle == AppStyle.LIQUID_GLASS,
+                        onClick = { onSetAppStyle(AppStyle.LIQUID_GLASS) }
+                    )
+                }
             }
         }
         Row(
@@ -637,39 +716,68 @@ fun DeviceScreen(
                 )
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            ThemeOptionButton(
-                label = "Dark",
-                icon = Icons.Default.DarkMode,
-                isSelected = themeMode == ThemeMode.DARK,
-                onClick = { onSetThemeMode(ThemeMode.DARK) },
-                modifier = Modifier.weight(1f)
+        if (grouped) {
+            IosSegmentedControl(
+                options = listOf("Dark", "Light", "System"),
+                selectedIndex = when (themeMode) {
+                    ThemeMode.DARK -> 0
+                    ThemeMode.LIGHT -> 1
+                    ThemeMode.SYSTEM -> 2
+                },
+                onSelect = { index ->
+                    onSetThemeMode(
+                        when (index) {
+                            0 -> ThemeMode.DARK
+                            1 -> ThemeMode.LIGHT
+                            else -> ThemeMode.SYSTEM
+                        }
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 6.dp)
             )
-            ThemeOptionButton(
-                label = "Light",
-                icon = Icons.Default.LightMode,
-                isSelected = themeMode == ThemeMode.LIGHT,
-                onClick = { onSetThemeMode(ThemeMode.LIGHT) },
-                modifier = Modifier.weight(1f)
-            )
-            ThemeOptionButton(
-                label = "System",
-                icon = Icons.Default.SettingsBrightness,
-                isSelected = themeMode == ThemeMode.SYSTEM,
-                onClick = { onSetThemeMode(ThemeMode.SYSTEM) },
-                modifier = Modifier.weight(1f)
-            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ThemeOptionButton(
+                    label = "Dark",
+                    icon = Icons.Default.DarkMode,
+                    isSelected = themeMode == ThemeMode.DARK,
+                    onClick = { onSetThemeMode(ThemeMode.DARK) },
+                    modifier = Modifier.weight(1f)
+                )
+                ThemeOptionButton(
+                    label = "Light",
+                    icon = Icons.Default.LightMode,
+                    isSelected = themeMode == ThemeMode.LIGHT,
+                    onClick = { onSetThemeMode(ThemeMode.LIGHT) },
+                    modifier = Modifier.weight(1f)
+                )
+                ThemeOptionButton(
+                    label = "System",
+                    icon = Icons.Default.SettingsBrightness,
+                    isSelected = themeMode == ThemeMode.SYSTEM,
+                    onClick = { onSetThemeMode(ThemeMode.SYSTEM) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(10.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
+        if (grouped) {
+            Spacer(modifier = Modifier.height(2.dp))
+        } else {
+            Spacer(modifier = Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
 
         // ── App ──────────────────────────────────────────────────────
         DeviceSectionLabel("App")
+        SettingsPanel {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -714,6 +822,7 @@ fun DeviceScreen(
                 }
             }
         }
+        }
 
         // Miner-specific sections — only when a local miner is active.
         // A remote-only user has no miner identity to show here; the
@@ -722,7 +831,7 @@ fun DeviceScreen(
         if (profile != null) {
             // ── Hardware Identity ──
             DeviceSectionLabel("Hardware Identity")
-            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+            SettingsPanel(contentPadding = PaddingValues(horizontal = 16.dp)) {
                 DeviceInfoRow("Miner Model", sys?.minerType ?: profile.displayName)
                 DeviceInfoDivider()
                 DeviceInfoRow("Hostname", sys?.hostname ?: "Antminer")
@@ -750,7 +859,7 @@ fun DeviceScreen(
 
             // ── Network ──
             DeviceSectionLabel("Network Configuration")
-            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+            SettingsPanel(contentPadding = PaddingValues(horizontal = 16.dp)) {
                 DeviceInfoRow("IP Address", sys?.ip?.ifBlank { profile.host } ?: profile.host)
                 DeviceInfoDivider()
                 DeviceInfoRow("Subnet Mask", sys?.netmask?.ifBlank { "255.255.255.0" } ?: "255.255.255.0")
@@ -762,7 +871,7 @@ fun DeviceScreen(
 
             // ── Firmware & OS ──
             DeviceSectionLabel("Firmware & OS")
-            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+            SettingsPanel(contentPadding = PaddingValues(horizontal = 16.dp)) {
                 DeviceInfoRow("Filesystem Version", sys?.filesystemVersion ?: "FR-1.17(250624-S19k Pro)")
                 DeviceInfoDivider()
                 DeviceInfoRow("Kernel Version", sys?.kernelVersion ?: "Linux 4.9.113 SMP")
@@ -777,8 +886,19 @@ fun DeviceScreen(
             // Disconnect Button
             OutlinedButton(
                 onClick = onDisconnect,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                shape = panelShape(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = if (grouped) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    }
+                ),
+                // 1 dp outline in both styles — that IS the M3
+                // outlined-button default border for an enabled
+                // button, spelled out so the grouped branch and the
+                // Violet branch share one expression.
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
@@ -846,9 +966,72 @@ fun DeviceScreen(
     }
 }
 
-/** Option C section label: small, uppercase, letterspaced, muted. */
+/**
+ * A grouped panel wrapper (v0.4.0): in the Glass style, a Surface in
+ * the panel colour with the hairline border and the panel radius,
+ * content inset 12 dp (16 dp for the dense info lists); in the
+ * Violet style, a plain Column — the Option C flat list renders
+ * exactly as before.
+ */
+@Composable
+private fun SettingsPanel(
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    if (LocalGlassSettings.current.isGlass) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = panelShape(),
+            border = panelBorder(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(contentPadding), content = content)
+        }
+    } else {
+        Column(content = content)
+    }
+}
+
+/** Divider between rows: inset hairline in a Glass panel, the plain
+ *  outline divider in the Violet flat list. */
+@Composable
+private fun SettingsRowDivider() {
+    if (LocalGlassSettings.current.isGlass) {
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant,
+            modifier = Modifier.padding(start = 16.dp)
+        )
+    } else {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+    }
+}
+
+/** The settings switch: iOS pill in the Glass style, Material Switch
+ *  in the Violet style. Same checked state and callback either way. */
+@Composable
+private fun SettingsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    if (LocalGlassSettings.current.isGlass) {
+        IosSwitch(checked = checked, onCheckedChange = onCheckedChange)
+    } else {
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/** Option C section label: small, uppercase, letterspaced, muted.
+ *  Grouped Sheets (v0.4.0): the mockup's group label — spec size and
+ *  tracking, normal weight, indented to the panel content line. */
 @Composable
 private fun DeviceSectionLabel(text: String) {
+    if (LocalGlassSettings.current.isGlass) {
+        Text(
+            text = text.uppercase(),
+            fontSize = GroupedSheetsSpec.GroupLabelTextSize,
+            letterSpacing = GroupedSheetsSpec.GroupLabelLetterSpacing,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 6.dp)
+        )
+        return
+    }
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelSmall,
@@ -865,6 +1048,15 @@ private fun DeviceIconChip(
     icon: ImageVector,
     tint: Color = MaterialTheme.colorScheme.primary
 ) {
+    if (LocalGlassSettings.current.isGlass) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
+        return
+    }
     Box(
         modifier = Modifier
             .size(34.dp)
@@ -922,7 +1114,13 @@ private fun DeviceListRow(
 
 @Composable
 private fun DeviceInfoDivider() {
-    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(
+        color = if (LocalGlassSettings.current.isGlass) {
+            MaterialTheme.colorScheme.outlineVariant
+        } else {
+            MaterialTheme.colorScheme.outline
+        }
+    )
 }
 
 /**

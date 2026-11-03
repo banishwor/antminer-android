@@ -379,7 +379,7 @@ fun HomeScreen(
                     Text(
                         text = footerText,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isStaleLocal) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        color = if (isStaleLocal) accentWarn() else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
@@ -461,6 +461,7 @@ private fun SkeletonCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -498,6 +499,23 @@ private fun SkeletonBar(width: androidx.compose.ui.unit.Dp, height: androidx.com
 
 @Composable
 private fun StalePill() {
+    // Grouped Sheets: the STALE pill is neutral — grey fill, secondary
+    // text; the word carries the state. Violet keeps the amber pill.
+    if (LocalGlassSettings.current.isGlass) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(4.dp)
+        ) {
+            Text(
+                text = "STALE",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+        return
+    }
     Surface(
         color = WarningAmber.copy(alpha = 0.15f),
         shape = RoundedCornerShape(4.dp)
@@ -529,25 +547,17 @@ private fun SelectedMachineHero(
     onEditNickname: (() -> Unit)?
 ) {
     val dataFont = LocalDataFontFamily.current
-    // Liquid Glass (v0.3.0): the hero is one of the two surfaces that
-    // get the full treatment — translucent fill (from the glass
-    // colour scheme), the bright specular edge, and on capable
-    // devices a blurred-wallpaper backdrop inside the panel. On
-    // glass-lite and in the Violet style this is the plain card.
+    // Grouped Sheets (v0.4.0): in the Glass style the hero is a flat
+    // grouped panel like every other surface — opaque fill, hairline
+    // border, no backdrop. (v0.3.0's translucent glass hero is gone;
+    // glass now lives only in the bottom dock.)
     val glass = LocalGlassSettings.current
-    val heroIsDark = when (themeMode) {
-        ThemeMode.DARK -> true
-        ThemeMode.LIGHT -> false
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-    }
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(heroIsDark)) else null,
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
-      Box {
-        GlassBackdrop()
         Column(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -669,19 +679,40 @@ private fun SelectedMachineHero(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Surface(
-                    color = if (summary.isOnline) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                    else MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = summary.statusText.uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (summary.isOnline) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                if (glass.isGlass) {
+                    // Mockup .pill.on / .pill.off: ONLINE is a SOLID
+                    // text-colour pill with background-colour text;
+                    // OFFLINE is the neutral grey chip. The word
+                    // carries the state either way.
+                    Surface(
+                        color = if (summary.isOnline) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = summary.statusText.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (summary.isOnline) MaterialTheme.colorScheme.background
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                } else {
+                    Surface(
+                        color = if (summary.isOnline) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = summary.statusText.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (summary.isOnline) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
                 if (summary.uptimeLabel.isNotBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -729,7 +760,6 @@ private fun SelectedMachineHero(
                 }
             }
         }
-      }
     }
 }
 
@@ -739,9 +769,17 @@ private fun NeedsPasswordCard(
     machine: NeedsPasswordMachine,
     onClick: () -> Unit
 ) {
+    val pwGlass = LocalGlassSettings.current.isGlass
     Card(
         shape = panelShape(),
-        colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.12f)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (pwGlass) {
+                MaterialTheme.colorScheme.surface
+            } else {
+                WarningAmber.copy(alpha = 0.12f)
+            }
+        ),
+        border = panelBorder(),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
@@ -753,7 +791,7 @@ private fun NeedsPasswordCard(
             Icon(
                 imageVector = Icons.Default.Lock,
                 contentDescription = null,
-                tint = WarningAmber,
+                tint = if (pwGlass) MaterialTheme.colorScheme.onSurfaceVariant else WarningAmber,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
@@ -805,6 +843,7 @@ private fun HomeCloudSetupCard(
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -846,7 +885,7 @@ private fun HomeCloudSetupCard(
 
             if (!cloudTestMessage.isNullOrBlank()) {
                 Surface(
-                    color = if (isCloudConnected) AntminerEmerald.copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer,
+                    color = if (isCloudConnected) accentOk().copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -912,6 +951,7 @@ private fun HomeAddMinerCard(onOpenSetup: () -> Unit) {
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -974,14 +1014,13 @@ private fun FleetHeaderCard(
         else -> "Relay OFF"
     }
 
-    // Liquid Glass (v0.3.0): specular edge like the hero's; the fill
-    // translucency comes from the glass colour scheme. (No backdrop
-    // layer here — live blur is scoped to the hero + tab bar only.)
-    val glass = LocalGlassSettings.current
+    // Grouped Sheets (v0.4.0): the fleet strip is a plain grouped
+    // panel — hairline border, opaque fill (panelBorder is null in
+    // the Violet style, whose card stays borderless as before).
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(isDark)) else null,
+        border = panelBorder(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -1050,9 +1089,9 @@ private fun AlertBanner(alert: MinerAlert) {
         com.example.antminerconnectiontest.domain.alerts.AlertSeverity.CRITICAL ->
             Triple(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.error, Icons.Default.Error)
         com.example.antminerconnectiontest.domain.alerts.AlertSeverity.WARNING ->
-            Triple(WarningAmber.copy(alpha = 0.15f), WarningAmber, Icons.Default.Warning)
+            Triple(accentWarn().copy(alpha = 0.15f), accentWarn(), Icons.Default.Warning)
         com.example.antminerconnectiontest.domain.alerts.AlertSeverity.INFO ->
-            Triple(ElectricBlue.copy(alpha = 0.15f), ElectricBlue, Icons.Default.Info)
+            Triple(accentInfo().copy(alpha = 0.15f), accentInfo(), Icons.Default.Info)
     }
 
     Surface(

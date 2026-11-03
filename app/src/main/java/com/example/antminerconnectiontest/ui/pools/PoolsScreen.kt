@@ -253,9 +253,23 @@ fun PoolsScreen(
 private fun PoolCard(pool: MinerPool) {
     val isPrimary = pool.priority == 0
     val isAlive = pool.status.equals("Alive", ignoreCase = true)
+    // Grouped Sheets (v0.4.0): an alive pool reads monochrome — grey
+    // dot, text-colour status word (the mockup's pool rows). Violet
+    // keeps its emerald alive treatment.
+    val groupedPools = LocalGlassSettings.current.isGlass
+    val aliveDotColor = if (groupedPools) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        accentOk()
+    }
+    val aliveTextColor = if (groupedPools) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        accentOk()
+    }
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = if (groupedPools) panelShape() else RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isPrimary) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
         ),
@@ -291,14 +305,14 @@ private fun PoolCard(pool: MinerPool) {
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(if (isAlive) AntminerEmerald else MaterialTheme.colorScheme.error)
+                            .background(if (isAlive) aliveDotColor else MaterialTheme.colorScheme.error)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = pool.status,
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (isAlive) AntminerEmerald else MaterialTheme.colorScheme.error
+                        color = if (isAlive) aliveTextColor else MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -320,7 +334,7 @@ private fun PoolCard(pool: MinerPool) {
                         text = pool.user,
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall,
-                        color = CyberCyan
+                        color = accentData()
                     )
                 }
             }
@@ -333,9 +347,9 @@ private fun PoolCard(pool: MinerPool) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 PoolMetric("Accepted", "${pool.acceptedShares}", MaterialTheme.colorScheme.primary)
-                PoolMetric("Rejected", "${pool.rejectedShares}", if (pool.rejectedShares > 0) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant)
+                PoolMetric("Rejected", "${pool.rejectedShares}", if (pool.rejectedShares > 0) accentWarn() else MaterialTheme.colorScheme.onSurfaceVariant)
                 if (pool.diff.isNotBlank()) {
-                    PoolMetric("Diff", pool.diff, CyberCyan)
+                    PoolMetric("Diff", pool.diff, accentData())
                 }
                 if (pool.lastShareTimeString.isNotBlank() && pool.lastShareTimeString != "0") {
                     PoolMetric("Last Share", pool.lastShareTimeString, MaterialTheme.colorScheme.onSurfaceVariant)

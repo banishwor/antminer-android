@@ -101,7 +101,7 @@ private fun DailyAnalysisListView(
                             text = state.analysisPhaseMessage ?: "Processing log analysis...",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = AntminerEmerald
+                            color = accentOk()
                         )
                         Text(
                             text = "${(state.analysisProgress * 100).toInt()}%",
@@ -113,7 +113,7 @@ private fun DailyAnalysisListView(
                     LinearProgressIndicator(
                         progress = { state.analysisProgress },
                         modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                        color = AntminerEmerald,
+                        color = accentOk(),
                         trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                     )
                 }
@@ -145,7 +145,7 @@ private fun DailyAnalysisListView(
                     Button(
                         onClick = { onStartAnalysis(state.selectedRawDateIds.toList()) },
                         enabled = !state.isAnalyzing,
-                        colors = ButtonDefaults.buttonColors(containerColor = AntminerEmerald),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentOk()),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -194,7 +194,7 @@ private fun DailyAnalysisListView(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = AntminerEmerald, modifier = Modifier.size(32.dp))
+                        CircularProgressIndicator(color = accentOk(), modifier = Modifier.size(32.dp))
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Querying available log dates from miner...",
@@ -211,11 +211,11 @@ private fun DailyAnalysisListView(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(imageVector = Icons.Default.ErrorOutline, contentDescription = null, tint = ErrorRuby, modifier = Modifier.size(36.dp))
+                        Icon(imageVector = Icons.Default.ErrorOutline, contentDescription = null, tint = accentError(), modifier = Modifier.size(36.dp))
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = state.errorMessage, color = ErrorRuby, style = MaterialTheme.typography.bodySmall)
+                        Text(text = state.errorMessage, color = accentError(), style = MaterialTheme.typography.bodySmall)
                         Spacer(modifier = Modifier.height(10.dp))
-                        Button(onClick = onRefreshDates, colors = ButtonDefaults.buttonColors(containerColor = AntminerEmerald)) {
+                        Button(onClick = onRefreshDates, colors = ButtonDefaults.buttonColors(containerColor = accentOk())) {
                             Text("Retry", color = Color(0xFF003919))
                         }
                     }
@@ -273,8 +273,8 @@ private fun DailyLogDateItemRow(
         ),
         border = CardDefaults.outlinedCardBorder().copy(
             brush = androidx.compose.ui.graphics.SolidColor(
-                if (isSelected) AntminerEmerald
-                else if (item.isAnalyzed) AntminerEmerald.copy(alpha = 0.5f)
+                if (isSelected) accentOk()
+                else if (item.isAnalyzed) accentOk().copy(alpha = 0.5f)
                 else MaterialTheme.colorScheme.outline
             )
         ),
@@ -302,14 +302,14 @@ private fun DailyLogDateItemRow(
                         checked = isSelected,
                         onCheckedChange = { onToggleSelect() },
                         enabled = !isAnalyzing,
-                        colors = CheckboxDefaults.colors(checkedColor = AntminerEmerald)
+                        colors = CheckboxDefaults.colors(checkedColor = accentOk())
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                 } else {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = "Analyzed",
-                        tint = AntminerEmerald,
+                        tint = accentOk(),
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -327,14 +327,14 @@ private fun DailyLogDateItemRow(
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = CyberCyan.copy(alpha = 0.2f),
+                                color = accentData().copy(alpha = 0.2f),
                                 modifier = Modifier.padding(horizontal = 2.dp)
                             ) {
                                 Text(
                                     text = "TODAY",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberCyan,
+                                    color = accentData(),
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
                             }
@@ -356,17 +356,17 @@ private fun DailyLogDateItemRow(
                     item.analysis?.let { analysis ->
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = if (analysis.maxTemperature >= 75) ErrorRuby.copy(alpha = 0.15f)
-                            else if (analysis.maxTemperature >= 70) WarningAmber.copy(alpha = 0.15f)
-                            else AntminerEmerald.copy(alpha = 0.15f)
+                            color = if (analysis.maxTemperature >= 75) accentError().copy(alpha = 0.15f)
+                            else if (analysis.maxTemperature >= 70) accentWarn().copy(alpha = 0.15f)
+                            else accentOk().copy(alpha = 0.15f)
                         ) {
                             Text(
                                 text = "Max ${analysis.maxTemperature}°C",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (analysis.maxTemperature >= 75) ErrorRuby
-                                else if (analysis.maxTemperature >= 70) WarningAmber
-                                else AntminerEmerald,
+                                color = if (analysis.maxTemperature >= 75) accentError()
+                                else if (analysis.maxTemperature >= 70) accentWarn()
+                                else accentOk(),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -459,15 +459,15 @@ private fun DailyAnalysisDetailView(
         Card(
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (analysis.maxTemperature >= 75) ErrorRuby.copy(alpha = 0.12f)
-                else if (analysis.maxTemperature >= 70) WarningAmber.copy(alpha = 0.12f)
+                containerColor = if (analysis.maxTemperature >= 75) accentError().copy(alpha = 0.12f)
+                else if (analysis.maxTemperature >= 70) accentWarn().copy(alpha = 0.12f)
                 else MaterialTheme.colorScheme.surfaceVariant
             ),
             border = CardDefaults.outlinedCardBorder().copy(
                 brush = androidx.compose.ui.graphics.SolidColor(
-                    if (analysis.maxTemperature >= 75) ErrorRuby
-                    else if (analysis.maxTemperature >= 70) WarningAmber
-                    else AntminerEmerald
+                    if (analysis.maxTemperature >= 75) accentError()
+                    else if (analysis.maxTemperature >= 70) accentWarn()
+                    else accentOk()
                 )
             ),
             modifier = Modifier.fillMaxWidth()
@@ -490,9 +490,9 @@ private fun DailyAnalysisDetailView(
                             text = "${analysis.maxTemperature}",
                             fontSize = 42.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (analysis.maxTemperature >= 75) ErrorRuby
-                            else if (analysis.maxTemperature >= 70) WarningAmber
-                            else AntminerEmerald
+                            color = if (analysis.maxTemperature >= 75) accentError()
+                            else if (analysis.maxTemperature >= 70) accentWarn()
+                            else accentOk()
                         )
                         Text(
                             text = "°C",
@@ -571,7 +571,7 @@ private fun DailyAnalysisDetailView(
                                 Text(
                                     text = "$maxTemp°C",
                                     fontWeight = FontWeight.Bold,
-                                    color = if (maxTemp >= 75) ErrorRuby else if (maxTemp >= 70) WarningAmber else AntminerEmerald,
+                                    color = if (maxTemp >= 75) accentError() else if (maxTemp >= 70) accentWarn() else accentOk(),
                                     fontSize = 14.sp
                                 )
                             }
@@ -645,9 +645,9 @@ private fun DailyAnalysisDetailView(
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = when (ev.type) {
-                                    "REBOOT" -> WarningAmber.copy(alpha = 0.2f)
-                                    "TEMP_SPIKE" -> ErrorRuby.copy(alpha = 0.2f)
-                                    "HW_ERROR" -> ErrorRuby.copy(alpha = 0.2f)
+                                    "REBOOT" -> accentWarn().copy(alpha = 0.2f)
+                                    "TEMP_SPIKE" -> accentError().copy(alpha = 0.2f)
+                                    "HW_ERROR" -> accentError().copy(alpha = 0.2f)
                                     else -> MaterialTheme.colorScheme.surfaceVariant
                                 }
                             ) {
@@ -656,9 +656,9 @@ private fun DailyAnalysisDetailView(
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = when (ev.type) {
-                                        "REBOOT" -> WarningAmber
-                                        "TEMP_SPIKE" -> ErrorRuby
-                                        "HW_ERROR" -> ErrorRuby
+                                        "REBOOT" -> accentWarn()
+                                        "TEMP_SPIKE" -> accentError()
+                                        "HW_ERROR" -> accentError()
                                         else -> MaterialTheme.colorScheme.onSurface
                                     },
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)

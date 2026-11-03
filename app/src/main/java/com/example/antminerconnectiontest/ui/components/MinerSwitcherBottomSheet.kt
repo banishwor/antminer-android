@@ -181,7 +181,7 @@ private fun ProfileRowItem(
             containerColor = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
         ),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(if (isActive) AntminerEmerald else MaterialTheme.colorScheme.outline)
+            brush = androidx.compose.ui.graphics.SolidColor(if (isActive) accentOk() else MaterialTheme.colorScheme.outline)
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -199,13 +199,13 @@ private fun ProfileRowItem(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(if (isActive) AntminerEmerald.copy(alpha = 0.2f) else MaterialTheme.colorScheme.background),
+                        .background(if (isActive) accentOk().copy(alpha = 0.2f) else MaterialTheme.colorScheme.background),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Speed,
                         contentDescription = null,
-                        tint = if (isActive) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (isActive) accentOk() else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -228,7 +228,7 @@ private fun ProfileRowItem(
                                 modifier = Modifier
                                     .size(7.dp)
                                     .clip(CircleShape)
-                                    .background(if (hashrateTh > 0.0) AntminerEmerald else Color(0xFFEF4444))
+                                    .background(if (hashrateTh > 0.0) accentOk() else offlineDotColor())
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                         }
@@ -236,7 +236,7 @@ private fun ProfileRowItem(
                             text = profile.host,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isActive) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isActive) accentOk() else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (hashrateTh != null && hashrateTh > 0.0) {
                             Text(
@@ -252,7 +252,7 @@ private fun ProfileRowItem(
                             Text(
                                 text = " • ☁ Cloud",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = CyberCyan
+                                color = accentCloud()
                             )
                         }
                     }
@@ -270,14 +270,14 @@ private fun ProfileRowItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isActive) {
                     Surface(
-                        color = AntminerEmerald.copy(alpha = 0.15f),
+                        color = accentOk().copy(alpha = 0.15f),
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
                             text = "ACTIVE",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelSmall,
-                            color = AntminerEmerald,
+                            color = accentOk(),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
@@ -304,7 +304,7 @@ private fun ProfileRowItem(
                         onDelete()
                     }
                 ) {
-                    Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                    Text("Delete", color = offlineDotColor(), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -329,7 +329,7 @@ private fun RemoteRowItem(
             containerColor = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant
         ),
         border = CardDefaults.outlinedCardBorder().copy(
-            brush = androidx.compose.ui.graphics.SolidColor(if (isSelected) CyberCyan else MaterialTheme.colorScheme.outline)
+            brush = androidx.compose.ui.graphics.SolidColor(if (isSelected) accentCloud() else MaterialTheme.colorScheme.outline)
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -347,13 +347,13 @@ private fun RemoteRowItem(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(CyberCyan.copy(alpha = 0.15f)),
+                        .background(accentCloud().copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = null,
-                        tint = CyberCyan,
+                        tint = accentCloud(),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -368,26 +368,26 @@ private fun RemoteRowItem(
                         text = "☁️ ${snapshot.user} • ${snapshot.ip}",
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall,
-                        color = CyberCyan
+                        color = accentCloud()
                     )
                     Text(
                         text = if (snapshot.isStale) "Offline • ${snapshot.timeAgoFormatted}" else "${String.format(java.util.Locale.US, "%.1f", entry.displayHashrateTh)} TH/s • ${snapshot.timeAgoFormatted}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (snapshot.isStale) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (snapshot.isStale) offlineDotColor() else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
             if (isSelected) {
                 Surface(
-                    color = CyberCyan.copy(alpha = 0.15f),
+                    color = accentCloud().copy(alpha = 0.15f),
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
                         text = "VIEWING",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.labelSmall,
-                        color = CyberCyan,
+                        color = accentCloud(),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -395,3 +395,16 @@ private fun RemoteRowItem(
         }
     }
 }
+
+/**
+ * The switcher sheet's offline red: a raw #EF4444 in the Violet
+ * style (its long-standing value); the scheme error slot (text
+ * colour) in the monochrome grouped design.
+ */
+@Composable
+private fun offlineDotColor(): Color =
+    if (LocalGlassSettings.current.isGlass) {
+        MaterialTheme.colorScheme.error
+    } else {
+        Color(0xFFEF4444)
+    }

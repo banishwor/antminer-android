@@ -137,7 +137,7 @@ fun SetupScreen(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = CardDefaults.outlinedCardBorder().copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(WarningAmber.copy(alpha = 0.6f))
+                        brush = androidx.compose.ui.graphics.SolidColor(accentWarn().copy(alpha = 0.6f))
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -149,13 +149,13 @@ fun SetupScreen(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(WarningAmber.copy(alpha = 0.15f)),
+                                .background(accentWarn().copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SignalCellularAlt,
                                 contentDescription = null,
-                                tint = WarningAmber,
+                                tint = accentWarn(),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -222,7 +222,7 @@ fun SetupScreen(
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                 modifier = Modifier.height(30.dp)
                             ) {
-                                Text("Stop", color = WarningAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Stop", color = accentWarn(), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         } else {
                             Button(
@@ -288,7 +288,7 @@ fun SetupScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = CardDefaults.outlinedCardBorder().copy(
                         brush = androidx.compose.ui.graphics.SolidColor(
-                            if (unaddedMiners.isNotEmpty()) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else AntminerEmerald.copy(alpha = 0.5f)
+                            if (unaddedMiners.isNotEmpty()) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else accentOk().copy(alpha = 0.5f)
                         )
                     ),
                     modifier = Modifier.fillMaxWidth()
@@ -320,13 +320,13 @@ fun SetupScreen(
                             if (unaddedMiners.isEmpty()) {
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = AntminerEmerald.copy(alpha = 0.15f)
+                                    color = accentOk().copy(alpha = 0.15f)
                                 ) {
                                     Text(
                                         text = "✓ ALL SAVED",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,
-                                        color = AntminerEmerald,
+                                        color = accentOk(),
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
@@ -440,7 +440,7 @@ fun SetupScreen(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = CardDefaults.outlinedCardBorder().copy(
                                 brush = androidx.compose.ui.graphics.SolidColor(
-                                    if (isAlreadyAdded) AntminerEmerald.copy(alpha = 0.5f)
+                                    if (isAlreadyAdded) accentOk().copy(alpha = 0.5f)
                                     else if (miner.status == DiscoveryStatus.CONFIRMED_ANTMINER) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.outline
                                 )
@@ -465,13 +465,13 @@ fun SetupScreen(
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Surface(
                                                 shape = RoundedCornerShape(4.dp),
-                                                color = AntminerEmerald.copy(alpha = 0.15f)
+                                                color = accentOk().copy(alpha = 0.15f)
                                             ) {
                                                 Text(
                                                     text = "✓ ADDED",
                                                     fontWeight = FontWeight.Black,
                                                     fontSize = 9.sp,
-                                                    color = AntminerEmerald,
+                                                    color = accentOk(),
                                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                                 )
                                             }
@@ -495,9 +495,9 @@ fun SetupScreen(
                                         },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = when {
-                                            isAlreadyAdded -> AntminerEmerald
-                                            miner.status == DiscoveryStatus.CONFIRMED_ANTMINER -> AntminerEmerald
-                                            else -> WarningAmber
+                                            isAlreadyAdded -> accentOk()
+                                            miner.status == DiscoveryStatus.CONFIRMED_ANTMINER -> accentOk()
+                                            else -> accentWarn()
                                         },
                                         fontSize = 10.sp
                                     )
