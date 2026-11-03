@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -559,7 +560,7 @@ private fun RowScope.DashboardNavItems(
     NavigationBarItem(
         selected = selectedTab == DashboardTab.LOGS,
         onClick = { onSelect(DashboardTab.LOGS) },
-        icon = { Icon(if (grouped) Icons.AutoMirrored.Filled.ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
+        icon = { Icon(if (grouped) ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
         label = { Text("Logs") },
         colors = itemColors()
     )
