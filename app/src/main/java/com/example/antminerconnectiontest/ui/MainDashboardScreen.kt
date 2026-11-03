@@ -560,7 +560,7 @@ private fun RowScope.DashboardNavItems(
     NavigationBarItem(
         selected = selectedTab == DashboardTab.LOGS,
         onClick = { onSelect(DashboardTab.LOGS) },
-        icon = { Icon(if (grouped) ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
+        icon = { Icon(if (grouped) Icons.AutoMirrored.Filled.ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
         label = { Text("Logs") },
         colors = itemColors()
     )
