@@ -2,7 +2,7 @@
 
 A native Android app (Kotlin + Jetpack Compose) for monitoring Bitmain Antminer ASIC miners from your phone — live hashrate, temperatures, fans, chip health, pools and logs when you're on the same Wi-Fi, and a cloud relay so you can check your miners from anywhere.
 
-**Current release: v0.3.3** — see [Releases](https://github.com/banishwor/antminer-android/releases).
+**Current release: v0.4.0** — see [Releases](https://github.com/banishwor/antminer-android/releases).
 
 ---
 
@@ -58,12 +58,12 @@ Checking a miner normally means sitting down at a computer and opening the miner
 
 ### Always improving the small things
 - **Skeleton loading** — on cold start, Home and the relay-only screen show skeleton placeholders until the first real data lands, instead of flashing empty or misleading states.
-- **In-app update check** — on open (and manually in Settings → App Updates) against GitHub Releases, including prereleases.
+- **In-app updates** — the app checks GitHub Releases on open (and manually in Settings → App Updates), including prereleases. When a newer version exists, tap **Download** in the update dialog: the APK downloads inside the app with a progress bar (cancellable), then **Install Now** hands it to the system installer — no browser round-trip. If Android asks you to allow installs from this app first, the dialog sends you to that one switch; allow it and tap Install again. In relay-only mode the checker stays completely quiet.
 
 ## Appearance
 
 - **Violet** — the default style. Light theme on a soft lavender-white, and a dark theme with true AMOLED black (`#000000`) backgrounds.
-- **Liquid Glass** — an optional style with frosted, translucent surfaces and a floating glass tab bar. On low-RAM phones it automatically falls back to a lighter version with no live blur, so cheap relay phones stay smooth.
+- **Glass** — the "Grouped Sheets" design: content sits in flat, rounded panels with hairline borders on a grouped grey base (`#F2F2F7` in Light; true `#000000` with `#1C1C1E` panels in Dark), Apple blue (`#007AFF` / `#0A84FF`) as the only accent, iOS-style switches and segmented controls, and status carried by labels plus monochrome treatment. The only glass left is the floating capsule dock at the bottom — on low-RAM phones it automatically falls back to a lighter version with no live blur, so cheap relay phones stay smooth. The relay-only screen uses the same grouped design in a fully opaque form.
 
 ## Screens
 

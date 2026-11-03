@@ -478,9 +478,11 @@ fun MainDashboardScreen(
         }
 
         // Update prompt: shown once per version per session, over
-        // whichever screen is current. "Update" opens the release APK
-        // in the browser for download + install-over; "Later" dismisses
-        // this version for the rest of the session.
+        // whichever screen is current. Since v0.4.0 the update is
+        // fully in-app (Esei-style): Download streams the APK into
+        // the app cache with progress + Cancel, Install Now hands it
+        // to the system installer. "Later" dismisses this version
+        // for the rest of the session.
         val pendingUpdate = uiState.availableUpdate
         // Never in relay-only mode: a site phone is never interrupted
         // by update UI (the cold-start check is skipped there too).
@@ -488,37 +490,21 @@ fun MainDashboardScreen(
             uiState.updatePromptDismissedTag != pendingUpdate.tag
         ) {
             val context = androidx.compose.ui.platform.LocalContext.current
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissUpdatePrompt() },
-                title = { Text("Update available — v${pendingUpdate.versionName}") },
-                text = {
-                    Text(
-                        text = pendingUpdate.notes.ifBlank {
-                            "A newer version of the app is ready to download."
-                        }
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            try {
-                                context.startActivity(
-                                    android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse(pendingUpdate.apkDownloadUrl)
-                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
-                            } catch (_: Throwable) {}
-                            viewModel.dismissUpdatePrompt()
-                        }
-                    ) {
-                        Text("Update")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUpdatePrompt() }) {
-                        Text("Later")
-                    }
+            com.example.antminerconnectiontest.ui.components.UpdateDialog(
+                update = pendingUpdate,
+                onDownload = viewModel::downloadUpdate,
+                onCancelDownload = viewModel::cancelUpdateDownload,
+                onResetDownload = viewModel::resetUpdateDownload,
+                onDismiss = viewModel::dismissUpdatePrompt,
+                onOpenReleasePage = { url ->
+                    try {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(url)
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (_: Throwable) {}
                 }
             )
         }
@@ -573,7 +559,7 @@ private fun RowScope.DashboardNavItems(
     NavigationBarItem(
         selected = selectedTab == DashboardTab.LOGS,
         onClick = { onSelect(DashboardTab.LOGS) },
-        icon = { Icon(if (grouped) Icons.Default.ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
+        icon = { Icon(if (grouped) Icons.AutoMirrored.Filled.ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
         label = { Text("Logs") },
         colors = itemColors()
     )

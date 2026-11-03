@@ -553,6 +553,12 @@ class DashboardViewModel(
         // Start Cloud Sync Loop
         startCloudSyncLoop()
 
+        // Wipe any leftover update download from a previous session
+        // (v0.4.0): a half-downloaded APK is never resumed or
+        // offered. Internal runCatching — cannot fail the init.
+        com.example.antminerconnectiontest.data.update.UpdateDownloader
+            .clearCache(getApplication())
+
         // One update check per cold start. Silent on failure/offline.
         // In relay-only mode the check is skipped entirely: a site
         // phone must never be interrupted by update UI (v0.3.0).
@@ -637,7 +643,7 @@ class DashboardViewModel(
      * Checks GitHub Releases for a build newer than the installed one.
      * Automatic checks (cold start) only fill [AppUiState.availableUpdate]
      * — the prompt UI decides whether to show it — and fail silently.
-     * Manual checks additionally report "You're up to date" (or that the
+     * Manual checks additionally report "You're on the latest version" (or that the
      * check failed) via [AppUiState.updateCheckMessage].
      */
     fun checkForUpdates(manual: Boolean) {
@@ -665,10 +671,19 @@ class DashboardViewModel(
                             // A manual check is authoritative; an automatic
                             // one only ever adds a prompt, never removes.
                             availableUpdate = if (manual) update else (update ?: it.availableUpdate),
+                            // A manual find re-opens the update dialog
+                            // even if this version was dismissed earlier
+                            // in the session (v0.4.0 — the Settings check
+                            // must always reach the in-app download).
+                            updatePromptDismissedTag = if (manual && update != null) {
+                                null
+                            } else {
+                                it.updatePromptDismissedTag
+                            },
                             updateCheckMessage = when {
                                 !manual -> it.updateCheckMessage
                                 update != null -> "Update available: v${update.versionName}"
-                                else -> "You're up to date."
+                                else -> "You're on the latest version (v$installed)."
                             }
                         )
                     }
@@ -687,6 +702,30 @@ class DashboardViewModel(
                 }
             )
         }
+    }
+
+    /**
+     * In-app update download (v0.4.0): streams the offered release's
+     * APK into the app cache; progress lives in
+     * [com.example.antminerconnectiontest.data.update.UpdateDownloader.state],
+     * which the update dialog renders. No browser is involved.
+     */
+    fun downloadUpdate() {
+        val update = _uiState.value.availableUpdate ?: return
+        viewModelScope.launch {
+            com.example.antminerconnectiontest.data.update.UpdateDownloader
+                .download(getApplication(), update)
+        }
+    }
+
+    /** Cancels an in-flight update download (partial file is wiped at next cold start / download). */
+    fun cancelUpdateDownload() {
+        com.example.antminerconnectiontest.data.update.UpdateDownloader.cancel()
+    }
+
+    /** Resets the download state after install hand-off or failure, so the dialog offers Download again. */
+    fun resetUpdateDownload() {
+        com.example.antminerconnectiontest.data.update.UpdateDownloader.reset()
     }
 
     /** "Later" on the update prompt: don't nag again for this version this session. */

@@ -18,8 +18,8 @@ android {
         // (re-signed after the Gradle build), never the ambient debug
         // key — an ambient-key change is what broke install-over
         // updates between v0.1.2 and v0.1.3.
-        versionCode = 18
-        versionName = "0.3.3"
+        versionCode = 19
+        versionName = "0.4.0"
     }
 
     buildTypes {
