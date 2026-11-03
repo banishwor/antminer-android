@@ -31,6 +31,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+
+    buildFeatures {
+        // AGP 9 generates no BuildConfig unless asked; the header shows
+        // the probe's own version from it.
+        buildConfig = true
+    }
 }
 
 // No dependencies block on purpose: the probe must run on the bare framework.
