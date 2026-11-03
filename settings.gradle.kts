@@ -31,3 +31,4 @@ plugins {
 
 rootProject.name = "Antminer Connection Test"
 include(":app")
+include(":relay-probe")
