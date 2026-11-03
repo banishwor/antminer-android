@@ -20,7 +20,8 @@ class GlassTabBarSpecTest {
 
     @Test
     fun capsuleHeight_isExactlyThePinnedBarHeight() {
-        assertEquals(72.dp, GlassTabBarSpec.Height)
+        // v0.4.0: the V3 mockup's dock is 65 dp tall.
+        assertEquals(65.dp, GlassTabBarSpec.Height)
     }
 
     @Test
@@ -37,8 +38,11 @@ class GlassTabBarSpecTest {
 
     @Test
     fun margins_arePositiveAndSmall() {
-        assertEquals(20.dp, GlassTabBarSpec.HorizontalMargin)
-        assertEquals(10.dp, GlassTabBarSpec.VerticalMargin)
+        // v0.4.0: the V3 mockup's dock floats 14 dp from the sides,
+        // 13 dp above the bottom edge.
+        assertEquals(14.dp, GlassTabBarSpec.HorizontalMargin)
+        assertEquals(13.dp, GlassTabBarSpec.VerticalMargin)
+        assertEquals(5.dp, GlassTabBarSpec.InnerHorizontalPadding)
         assertTrue(GlassTabBarSpec.HorizontalMargin > 0.dp)
         assertTrue(GlassTabBarSpec.VerticalMargin >= 0.dp)
         assertTrue(GlassTabBarSpec.InnerHorizontalPadding >= 0.dp)

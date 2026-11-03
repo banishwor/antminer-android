@@ -50,6 +50,17 @@ private val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp)
 )
 
+// Grouped Sheets (Glass style, v0.4.0) shape scale: 12 dp panels per
+// the V3 mockup, tighter chips, sheet/dialog corners from the same
+// family. Only the Glass style uses these — Violet keeps AppShapes.
+private val GroupedShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(22.dp)
+)
+
 // Light: lavender-white surfaces (mockup .th-violet-l), deep violet
 // accent. The mockup's --accent #6D28D9 is already deep enough to serve
 // as text and fills alike; its tints fill the containers.
@@ -110,78 +121,97 @@ private val AntminerDarkColorScheme = darkColorScheme(
     onErrorContainer = Color(0xFFF2C9C5) // derived pale red
 )
 
-// ── Liquid Glass schemes (v0.3.0, round-5 mockup) ────────────────────
-// Same violet hues and status semantics as the solid schemes — only
-// the MATERIAL changes: surfaces become translucent fills that float
-// over the wallpaper (see GlassWallpaper), borders brighten toward a
-// specular edge. Background stays a solid base colour so window bars
-// and anything painted behind the wallpaper keep a sane tone; the
-// shell draws the wallpaper over it and makes its own containers
-// transparent. Surface-container slots are overridden too: Material3
-// defaults (bottom sheet, menus, cards in some versions) read them.
+// ── Grouped Sheets schemes (Glass style, v0.4.0) ────────────────────
+// The V3 redesign of the Liquid Glass style (approved whole-app
+// mockup, Round-12 "Grouped Sheets" final): the schemes are FULLY
+// OPAQUE — a flat grouped base, white / #1C1C1E panels, hairline
+// borders — with Apple blue as the only accent and status carried by
+// labels + monochrome slots (tertiary and error resolve to the text
+// colour; their containers are neutral greys). Real glass survives
+// only in the floating dock, whose colours come from
+// [GroupedSheetsSpec] directly, not from these schemes. Tokens are
+// pinned in [GroupedSheetsSpec]; the mapping below is the one place
+// they meet Material3.
 private val GlassLightColorScheme = lightColorScheme(
-    primary = Color(0xFF6D28D9),
+    primary = GroupedSheetsSpec.LightAccent,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFEDE9FE).copy(alpha = 0.72f),
-    onPrimaryContainer = Color(0xFF4C2D8A),
-    secondary = Color(0xFF5B21B6),
+    primaryContainer = GroupedSheetsSpec.LightAccent.copy(alpha = 0.12f),
+    onPrimaryContainer = GroupedSheetsSpec.LightAccent,
+    secondary = GroupedSheetsSpec.LightAccent,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFDDD6FE).copy(alpha = 0.66f),
-    onSecondaryContainer = Color(0xFF3B1F73),
-    tertiary = Color(0xFFBE7D1C),
+    secondaryContainer = GroupedSheetsSpec.LightChipBackground,
+    onSecondaryContainer = GroupedSheetsSpec.LightText,
+    tertiary = GroupedSheetsSpec.LightText,
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF9ECD2).copy(alpha = 0.78f),
-    onTertiaryContainer = Color(0xFF5C430A),
-    background = Color(0xFFE9E4FB), // glass base (wallpaper covers it)
-    onBackground = LightTextPrimary,
-    surface = Color.White.copy(alpha = 0.62f),
-    onSurface = LightTextPrimary,
-    surfaceVariant = Color(0xFFEDE9FE).copy(alpha = 0.55f),
-    onSurfaceVariant = LightTextSecondary,
-    surfaceContainerLowest = Color.White.copy(alpha = 0.45f),
-    surfaceContainerLow = Color.White.copy(alpha = 0.55f),
-    surfaceContainer = Color.White.copy(alpha = 0.62f),
-    surfaceContainerHigh = Color.White.copy(alpha = 0.72f),
-    surfaceContainerHighest = Color.White.copy(alpha = 0.82f),
-    outline = Color(0xFFB7A8E8),
-    outlineVariant = Color(0xFFD9D0F5),
-    error = ErrorRuby,
+    tertiaryContainer = GroupedSheetsSpec.LightChipBackground,
+    onTertiaryContainer = GroupedSheetsSpec.LightText,
+    background = GroupedSheetsSpec.LightBackground,
+    onBackground = GroupedSheetsSpec.LightText,
+    surface = GroupedSheetsSpec.LightPanel,
+    onSurface = GroupedSheetsSpec.LightText,
+    surfaceVariant = GroupedSheetsSpec.LightChipBackground,
+    onSurfaceVariant = GroupedSheetsSpec.LightSecondary,
+    surfaceContainerLowest = GroupedSheetsSpec.LightPanel,
+    surfaceContainerLow = GroupedSheetsSpec.LightPanel,
+    surfaceContainer = GroupedSheetsSpec.LightPanel,
+    surfaceContainerHigh = GroupedSheetsSpec.LightPanelElevated,
+    surfaceContainerHighest = GroupedSheetsSpec.LightPanel,
+    outline = GroupedSheetsSpec.LightHairline,
+    outlineVariant = GroupedSheetsSpec.LightSeparator,
+    error = GroupedSheetsSpec.LightText,
     onError = Color.White,
-    errorContainer = Color(0xFFF9E9E9).copy(alpha = 0.85f),
-    onErrorContainer = Color(0xFF5F2323)
+    errorContainer = GroupedSheetsSpec.LightPanelElevated,
+    onErrorContainer = GroupedSheetsSpec.LightText,
+    inverseSurface = GroupedSheetsSpec.DarkPanel,
+    inverseOnSurface = GroupedSheetsSpec.DarkText,
+    inversePrimary = GroupedSheetsSpec.DarkAccent
 )
 
 private val GlassDarkColorScheme = darkColorScheme(
-    primary = Color(0xFFA78BFA),
-    onPrimary = Color(0xFF1A0F38),
-    primaryContainer = Color(0xFF160B31).copy(alpha = 0.72f),
-    onPrimaryContainer = Color(0xFFC4B5FD),
-    secondary = Color(0xFFC4B5FD),
-    onSecondary = Color(0xFF1A0F38),
-    secondaryContainer = Color(0xFF171226).copy(alpha = 0.66f),
-    onSecondaryContainer = Color(0xFFB8A8E0),
-    tertiary = Color(0xFFE8A33D),
-    onTertiary = Color(0xFF241600),
-    tertiaryContainer = Color(0xFF33270C).copy(alpha = 0.78f),
-    onTertiaryContainer = Color(0xFFF7E8C3),
-    background = Color(0xFF000000), // glass base: true black
-    onBackground = DarkTextPrimary,
-    surface = Color(0xFF171226).copy(alpha = 0.55f),
-    onSurface = DarkTextPrimary,
-    surfaceVariant = Color(0xFF171226).copy(alpha = 0.48f),
-    onSurfaceVariant = DarkTextSecondary,
-    surfaceContainerLowest = Color(0xFF0A0A0B).copy(alpha = 0.45f),
-    surfaceContainerLow = Color(0xFF12101E).copy(alpha = 0.52f),
-    surfaceContainer = Color(0xFF171226).copy(alpha = 0.55f),
-    surfaceContainerHigh = Color(0xFF1E1836).copy(alpha = 0.65f),
-    surfaceContainerHighest = Color(0xFF251D42).copy(alpha = 0.75f),
-    outline = Color(0xFF4A3A75),
-    outlineVariant = Color(0xFF2C2149),
-    error = Color(0xFFE0655F),
-    onError = Color(0xFF2A0E0D),
-    errorContainer = Color(0xFF2A0E0D).copy(alpha = 0.85f),
-    onErrorContainer = Color(0xFFF2C9C5)
+    primary = GroupedSheetsSpec.DarkAccent,
+    onPrimary = Color.White,
+    primaryContainer = GroupedSheetsSpec.DarkAccent.copy(alpha = 0.16f),
+    onPrimaryContainer = GroupedSheetsSpec.DarkAccent,
+    secondary = GroupedSheetsSpec.DarkAccent,
+    onSecondary = Color.White,
+    secondaryContainer = GroupedSheetsSpec.DarkChipBackground,
+    onSecondaryContainer = GroupedSheetsSpec.DarkText,
+    tertiary = GroupedSheetsSpec.DarkText,
+    onTertiary = Color.Black,
+    tertiaryContainer = GroupedSheetsSpec.DarkChipBackground,
+    onTertiaryContainer = GroupedSheetsSpec.DarkText,
+    background = GroupedSheetsSpec.DarkBackground,
+    onBackground = GroupedSheetsSpec.DarkText,
+    surface = GroupedSheetsSpec.DarkPanel,
+    onSurface = GroupedSheetsSpec.DarkText,
+    surfaceVariant = GroupedSheetsSpec.DarkChipBackground,
+    onSurfaceVariant = GroupedSheetsSpec.DarkSecondary,
+    surfaceContainerLowest = GroupedSheetsSpec.DarkPanel,
+    surfaceContainerLow = GroupedSheetsSpec.DarkPanel,
+    surfaceContainer = GroupedSheetsSpec.DarkPanel,
+    surfaceContainerHigh = GroupedSheetsSpec.DarkPanelElevated,
+    surfaceContainerHighest = GroupedSheetsSpec.DarkPanelElevated,
+    outline = GroupedSheetsSpec.DarkHairline,
+    outlineVariant = GroupedSheetsSpec.DarkSeparator,
+    error = GroupedSheetsSpec.DarkText,
+    onError = Color.Black,
+    errorContainer = GroupedSheetsSpec.DarkPanelElevated,
+    onErrorContainer = GroupedSheetsSpec.DarkText,
+    inverseSurface = GroupedSheetsSpec.LightBackground,
+    inverseOnSurface = GroupedSheetsSpec.LightText,
+    inversePrimary = GroupedSheetsSpec.LightAccent
 )
+
+/**
+ * The Grouped Sheets scheme for the resolved darkness (v0.4.0), for
+ * surfaces that resolve their own scheme regardless of the selected
+ * style's translucency rules — the relay-only status screen, which
+ * renders the grouped design in fully opaque form (the grouped
+ * schemes are already opaque, so this is simply the same scheme the
+ * Glass style uses).
+ */
+fun groupedSheetsColorScheme(isDark: Boolean): ColorScheme =
+    if (isDark) GlassDarkColorScheme else GlassLightColorScheme
 
 /**
  * The SOLID Violet scheme for the resolved darkness, ignoring the
@@ -249,7 +279,7 @@ fun AntminerConnectionTestTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = NordTypography,
-            shapes = AppShapes,
+            shapes = if (isGlass) GroupedShapes else AppShapes,
             content = content
         )
     }

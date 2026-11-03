@@ -20,9 +20,11 @@ import androidx.compose.ui.unit.dp
 /**
  * Appearance style (v0.3.0): the app's look, chosen in Settings →
  * Appearance → Style and persisted like the theme mode. [VIOLET] is
- * the default solid theme; [LIQUID_GLASS] is the opt-in frosted-glass
- * look from the approved round-5 mockup. The style never changes
- * layout, content or status-colour semantics — only the material.
+ * the default solid theme; [LIQUID_GLASS] is the opt-in glass look —
+ * since v0.4.0 that is the V3 "Grouped Sheets" design (see
+ * [GroupedSheetsSpec]): flat grouped panels, Apple-blue accent, and
+ * real glass only in the floating dock. The style never changes
+ * layout, content or status-label semantics — only the material.
  */
 enum class AppStyle {
     VIOLET,
@@ -83,69 +85,34 @@ data class GlassSettings(
 val LocalGlassSettings = staticCompositionLocalOf { GlassSettings() }
 
 /**
- * The wallpaper brush: the soft colour wash the glass floats over.
- * Light = violet-blue-green wash (round-5 mockup); dark = deep
- * violet-blue glows on true #000000 — where there is no colour, the
- * base stays pure black, so the AMOLED preference still holds.
+ * The backdrop brush behind glass surfaces. Since v0.4.0 (V3 Grouped
+ * Sheets) there is NO wallpaper: the design's base is the flat
+ * grouped colour, so this brush is a flat fill of that base. It is
+ * kept as a brush because [GlassBackdrop] still samples it inside
+ * panels on FULL-tier devices — blurring a flat colour is invisible,
+ * which is exactly what the V3 design wants behind its opaque panels.
  */
 fun glassWallpaperBrush(isDark: Boolean): Brush =
-    if (isDark) {
-        Brush.radialGradient(
-            colors = listOf(
-                Color(0xFF2A1650), // deep violet glow
-                Color(0xFF0E2A52), // deep blue
-                Color(0xFF000000)  // true black base
-            ),
-            radius = 1400f
+    Brush.linearGradient(
+        colors = listOf(
+            GroupedSheetsSpec.background(isDark),
+            GroupedSheetsSpec.background(isDark)
         )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xFFDDD3FC), // violet wash
-                Color(0xFFC9DCF7), // blue wash
-                Color(0xFFCDF0DC), // green wash
-                Color(0xFFE9E4FB)  // back to lavender
-            )
-        )
-    }
+    )
 
-/** The solid base under the wallpaper (also the status-bar tone). */
+/** The solid base under the shell (also the status-bar tone). */
 fun glassBaseColor(isDark: Boolean): Color =
-    if (isDark) Color(0xFF000000) else Color(0xFFE9E4FB)
+    GroupedSheetsSpec.background(isDark)
 
 /**
- * The glass wallpaper, drawn behind the whole shell. The glow layer
- * is blurred ONCE — it is static, so even on [GlassTier.FULL] this is
- * a fixed cost at composition, not a per-frame effect. On LITE the
- * gradients are simply drawn soft (a linear/radial gradient is
- * already blurred by nature), which is the pre-blurred-static
- * fallback: same picture, no RenderEffect anywhere.
+ * The shell backdrop for the Glass style: since v0.4.0 simply the
+ * flat grouped base colour — the V3 design has no wallpaper and no
+ * gradients behind content. Kept as a composable so the shell's
+ * layering (base first, then the transparent Scaffold) is unchanged.
  */
 @Composable
 fun GlassWallpaper(isDark: Boolean, tier: GlassTier, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxSize().background(glassBaseColor(isDark))) {
-        val glowModifier = if (tier == GlassTier.FULL) {
-            Modifier.fillMaxSize().blur(48.dp)
-        } else {
-            Modifier.fillMaxSize()
-        }
-        Box(modifier = glowModifier.background(glassWallpaperBrush(isDark)))
-        // Specular sheen: a faint white wash at the very top, like
-        // light catching the top edge of a glass pane.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = if (isDark) 0.05f else 0.18f),
-                            Color.Transparent
-                        ),
-                        endY = 420f
-                    )
-                )
-        )
-    }
+    Box(modifier = modifier.fillMaxSize().background(glassBaseColor(isDark)))
 }
 
 /**
@@ -189,30 +156,30 @@ fun BoxScope.GlassBackdrop() {
  * Unit tests pin these values.
  */
 object GlassTabBarSpec {
-    /** Capsule height — a standard-height bar, not a screen. */
-    val Height = 72.dp
-    /** Space between the capsule and each screen edge. */
-    val HorizontalMargin = 20.dp
-    /** Space above and below the capsule inside the bottomBar slot. */
-    val VerticalMargin = 10.dp
+    /** Capsule height — the V3 mockup's 65 dp dock. */
+    val Height = 65.dp
+    /** Space between the capsule and each screen edge (mockup: 14). */
+    val HorizontalMargin = 14.dp
+    /** Space above and below the capsule inside the bottomBar slot (mockup bottom: 13). */
+    val VerticalMargin = 13.dp
     /** Fully rounded ends — a pill at bar height, whatever the width. */
     const val CornerRadiusPercent = 50
-    /** Breathing room between the capsule edge and the first/last tab. */
-    val InnerHorizontalPadding = 6.dp
+    /** Breathing room between the capsule edge and the first/last tab (mockup: 5). */
+    val InnerHorizontalPadding = 5.dp
     /** Total height the Scaffold takes from the content for the bar. */
     val ReservedHeight = Height + VerticalMargin * 2
 }
 
 /**
- * The bright hairline "specular edge" of a glass panel: lit from the
- * top-left, fading to a quiet border at the bottom — the detail that
- * makes a translucent fill read as glass instead of flat tint.
+ * The hairline edge of a grouped panel (v0.4.0): a near-flat border
+ * in the mockup's hairline tone, fractionally stronger at the top —
+ * panels in the V3 design are defined by this hairline, not by a
+ * specular glass edge.
  */
 fun glassEdgeBrush(isDark: Boolean): Brush =
     Brush.linearGradient(
         colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.42f else 0.75f),
-            Color.White.copy(alpha = if (isDark) 0.10f else 0.25f),
-            Color.White.copy(alpha = if (isDark) 0.04f else 0.10f)
+            GroupedSheetsSpec.hairline(isDark).copy(alpha = 1f),
+            GroupedSheetsSpec.hairline(isDark).copy(alpha = 0.75f)
         )
     )
