@@ -21,8 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.alerts.MinerAlert
-import com.example.antminerconnectiontest.domain.model.AddMinerCardVisibility
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
+import com.example.antminerconnectiontest.domain.model.HomeContent
+import com.example.antminerconnectiontest.domain.model.HomeLoadState
 import com.example.antminerconnectiontest.domain.model.FleetSorting
 import com.example.antminerconnectiontest.domain.model.HeroSummary
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
@@ -101,7 +102,14 @@ fun HomeScreen(
     onTestCloudConnection: (webhookUrl: String, userName: String) -> Unit = { _, _ -> },
     isTestingCloud: Boolean = false,
     cloudTestMessage: String? = null,
-    isCloudConnected: Boolean = false
+    isCloudConnected: Boolean = false,
+    /**
+     * The first real fleet state has not loaded yet (v0.3.3 — see
+     * [HomeLoadState] for the rule): Home shows skeleton placeholders
+     * in the shapes of its real layout and NONE of the empty-state
+     * content. Driven by explicit state-flow signals, never a timer.
+     */
+    isLoading: Boolean = false
 ) {
     // Remote display is ALWAYS a deliberate selection (v0.1.9 rule,
     // unchanged): no silent swap to a cloud feed. The one designed
@@ -176,16 +184,27 @@ fun HomeScreen(
     val heroSnapshot = effectiveRemote
         ?: defaultRow?.entry?.remoteSnapshot?.takeIf { profile == null && selectedRemoteMiner == null }
 
-    // The "Add a miner" card rule (v0.2.3, user-approved): it shows
-    // ONLY when there is no miner at all — no saved local profiles
-    // AND no merged fleet entries (local or cloud). See
-    // AddMinerCardVisibility for the pure, tested rule.
-    val showAddMinerCard = AddMinerCardVisibility.shouldShow(
+    // What Home renders (v0.3.3): while the first real fleet state
+    // is still loading, skeletons only — the fleet merely *looks*
+    // empty before data arrives, so no empty-state content (above
+    // all the "Add a miner" card) may show. Once loaded, the v0.2.3
+    // rule applies unchanged: the card shows ONLY when there is no
+    // miner at all — no saved local profiles AND no merged fleet
+    // entries (local or cloud). See HomeLoadState /
+    // AddMinerCardVisibility for the pure, tested rules.
+    val homeContent = HomeLoadState.content(
+        isLoaded = !isLoading,
         savedProfileCount = savedProfiles.size,
         mergedFleetCount = mergedMiners.size
     )
+    val showAddMinerCard = homeContent == HomeContent.EMPTY
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+
+    if (homeContent == HomeContent.LOADING) {
+        HomeLoadingSkeleton()
+        return
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // ── Fixed region: fleet strip, hero, state cards ──────────────
@@ -368,6 +387,113 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/**
+ * Home's loading state (v0.3.3): grey placeholder blocks in the
+ * shapes of the real layout — fleet strip, hero card, fleet rows —
+ * and nothing else. No "Add a miner" card, no setup card, no
+ * "No miners yet" text: all of those are claims about a fleet that
+ * has not arrived yet. Static blocks, no shimmer — a cheap relay
+ * phone pays nothing for this screen.
+ */
+@Composable
+private fun HomeLoadingSkeleton() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Fleet strip shape: big total + count line left, account chip right.
+        SkeletonCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SkeletonBar(width = 96.dp, height = 26.dp)
+                    SkeletonBar(width = 72.dp, height = 10.dp)
+                }
+                SkeletonBar(width = 108.dp, height = 22.dp)
+            }
+        }
+
+        // Hero shape: identity lines, the big hashrate, a status row.
+        SkeletonCard {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SkeletonBar(widthFraction = 0.55f, height = 20.dp)
+                SkeletonBar(widthFraction = 0.4f, height = 12.dp)
+                Spacer(modifier = Modifier.height(2.dp))
+                SkeletonBar(widthFraction = 0.45f, height = 40.dp)
+                SkeletonBar(widthFraction = 0.3f, height = 12.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SkeletonBar(width = 74.dp, height = 20.dp)
+                    SkeletonBar(width = 96.dp, height = 20.dp)
+                }
+            }
+        }
+
+        // Fleet rows shape: three rows of name/detail + value.
+        SkeletonCard {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                repeat(3) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            SkeletonBar(width = 130.dp, height = 14.dp)
+                            SkeletonBar(width = 88.dp, height = 10.dp)
+                        }
+                        SkeletonBar(width = 62.dp, height = 16.dp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun SkeletonBar(widthFraction: Float, height: androidx.compose.ui.unit.Dp) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth(widthFraction)
+            .height(height)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(6.dp)
+            )
+    )
+}
+
+@Composable
+private fun SkeletonBar(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(6.dp)
+            )
+    )
 }
 
 @Composable

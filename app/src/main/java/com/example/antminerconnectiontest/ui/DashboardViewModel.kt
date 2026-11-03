@@ -101,6 +101,26 @@ data class AppUiState(
     val lastRelayUploadAtMs: Long? = null,
     /** Last relay upload error, as reported by the relay itself (persisted). */
     val relayLastError: String? = null,
+    /**
+     * The persisted state (cloud config, theme, appearance style,
+     * relay-only switch, relay status, saved profiles, nicknames) has
+     * been loaded into this state (v0.3.3). False only in the pre-load
+     * default state: screens that render persisted values (relay-only
+     * status, Home) show skeleton placeholders while this is false, so
+     * an unloaded default — relay off, no miners, no upload yet — can
+     * never be mistaken for the phone's real state on a cold start.
+     * Set once, in init, by the same update that loads the values.
+     */
+    val isInitialStateLoaded: Boolean = false,
+    /**
+     * The first cloud fleet fetch of this session has completed —
+     * success OR failure (v0.3.3). Before it lands, the merged fleet
+     * can only *look* empty (a cloud-only viewer's machines have not
+     * arrived yet), so Home stays in its loading state and the
+     * "Add a miner" card stays hidden. Set in the sync cycle right
+     * after the fetch attempt resolves.
+     */
+    val hasCompletedFirstCloudFetch: Boolean = false,
     val selectedLogsTab: LogsTab = LogsTab.CURRENT,
     val currentLogText: String? = null,
     val historyLogText: String? = null,
@@ -377,7 +397,11 @@ class DashboardViewModel(
                     lastRelayUploadAtMs = savedLastUpload,
                     relayLastError = savedRelayError,
                     savedProfiles = profileManager.savedProfiles.value,
-                    nicknameOverrides = storageManager.loadPhoneNicknames()
+                    nicknameOverrides = storageManager.loadPhoneNicknames(),
+                    // The persisted state is IN this emission — from
+                    // here on, screens may render real values instead
+                    // of loading skeletons (v0.3.3).
+                    isInitialStateLoaded = true
                 )
             }
             if (savedCloudConfig.isSyncEnabled) {
@@ -385,6 +409,10 @@ class DashboardViewModel(
                     com.example.antminerconnectiontest.service.MinerRelayService.start(getApplication())
                 } catch (_: Throwable) {}
             }
+        } else {
+            // No storage (unit tests): there is no persisted state to
+            // wait for, so the state counts as loaded from the start.
+            _uiState.update { it.copy(isInitialStateLoaded = true) }
         }
 
         // Observe saved profiles
@@ -704,6 +732,12 @@ class DashboardViewModel(
             _uiState.update {
                 it.copy(isCloudConnected = false)
             }
+        }
+        // The session's first fleet fetch has now resolved, one way or
+        // the other (v0.3.3): Home may leave its loading state — the
+        // fleet it shows from here is the real fleet, empty or not.
+        if (!_uiState.value.hasCompletedFirstCloudFetch) {
+            _uiState.update { it.copy(hasCompletedFirstCloudFetch = true) }
         }
         val fetched = fetchRes.getOrNull()
 

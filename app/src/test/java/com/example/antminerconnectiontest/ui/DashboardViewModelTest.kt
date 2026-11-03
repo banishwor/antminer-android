@@ -506,6 +506,28 @@ class DashboardViewModelTest {
         )
     }
 
+    // ── v0.3.3: explicit loaded signals (skeleton gating) ─────────
+
+    @Test
+    fun appUiStateDefaults_areUnloaded() {
+        // The pre-load default state must read as NOT loaded, so a
+        // screen composed from it can only show skeletons — never the
+        // default relay-off / no-miners / not-yet values as real.
+        val fresh = AppUiState()
+        assertFalse(fresh.isInitialStateLoaded)
+        assertFalse(fresh.hasCompletedFirstCloudFetch)
+    }
+
+    @Test
+    fun viewModelInit_marksInitialStateLoaded() {
+        // No storage in tests: nothing persisted to wait for, so init
+        // leaves the state loaded. The first cloud fetch has NOT run —
+        // that flag only flips when a sync cycle's fetch resolves.
+        val viewModel = DashboardViewModel()
+        assertTrue(viewModel.uiState.value.isInitialStateLoaded)
+        assertFalse(viewModel.uiState.value.hasCompletedFirstCloudFetch)
+    }
+
     @Test
     fun relayOnlyMode_enablingClosesSetupFlow() {
         val viewModel = DashboardViewModel()

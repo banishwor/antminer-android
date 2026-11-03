@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -181,6 +182,19 @@ private val GlassDarkColorScheme = darkColorScheme(
     errorContainer = Color(0xFF2A0E0D).copy(alpha = 0.85f),
     onErrorContainer = Color(0xFFF2C9C5)
 )
+
+/**
+ * The SOLID Violet scheme for the resolved darkness, ignoring the
+ * Liquid Glass style (v0.3.3). The glass schemes' surface slots are
+ * translucent BY DESIGN — they are meant to float over the wallpaper
+ * the shell draws behind them. A surface that must stay fully opaque
+ * whatever style is selected (the relay-only status screen, which
+ * deliberately renders plain Violet and draws no wallpaper) resolves
+ * its colours from this scheme instead, so its cards and text keep
+ * full contrast in both themes.
+ */
+fun solidVioletColorScheme(isDark: Boolean): ColorScheme =
+    if (isDark) AntminerDarkColorScheme else AntminerLightColorScheme
 
 @Composable
 fun AntminerConnectionTestTheme(

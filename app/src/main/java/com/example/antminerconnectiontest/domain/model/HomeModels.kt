@@ -18,6 +18,52 @@ object AddMinerCardVisibility {
         savedProfileCount == 0 && mergedFleetCount == 0
 }
 
+/** What Home renders, as one decision (v0.3.3). */
+enum class HomeContent {
+    /** First real fleet state not in yet: skeleton placeholders only. */
+    LOADING,
+
+    /** Loaded, and the fleet is genuinely completely empty. */
+    EMPTY,
+
+    /** Loaded, with at least one miner (local or cloud) in the fleet. */
+    FLEET
+}
+
+/**
+ * Home's loading rule (v0.3.3): until the first REAL fleet state has
+ * loaded, Home shows skeletons — never the empty-fleet content. The
+ * fleet only *looks* empty before data arrives, and the settled
+ * v0.2.3 rule is that the "Add a miner" card shows ONLY when the
+ * loaded fleet is genuinely completely empty.
+ *
+ * "Loaded" is explicit state, never a timer: the persisted state has
+ * been emitted into the UI state (AppUiState.isInitialStateLoaded)
+ * AND — when cloud viewing is configured — the session's first cloud
+ * fetch has completed, success or failure
+ * (AppUiState.hasCompletedFirstCloudFetch). With no cloud configured
+ * there is no fetch to wait for. Pure, so the rule is unit-testable.
+ */
+object HomeLoadState {
+
+    fun isLoaded(
+        isInitialStateLoaded: Boolean,
+        cloudConfigured: Boolean,
+        hasCompletedFirstCloudFetch: Boolean
+    ): Boolean =
+        isInitialStateLoaded && (!cloudConfigured || hasCompletedFirstCloudFetch)
+
+    fun content(
+        isLoaded: Boolean,
+        savedProfileCount: Int,
+        mergedFleetCount: Int
+    ): HomeContent = when {
+        !isLoaded -> HomeContent.LOADING
+        AddMinerCardVisibility.shouldShow(savedProfileCount, mergedFleetCount) -> HomeContent.EMPTY
+        else -> HomeContent.FLEET
+    }
+}
+
 /**
  * Everything the Home hero is allowed to show — and nothing else.
  *

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.antminerconnectiontest.domain.model.HomeLoadState
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.PhoneNicknames
 import com.example.antminerconnectiontest.theme.*
@@ -238,7 +239,18 @@ fun MainDashboardScreen(
                                 onTestCloudConnection = viewModel::testCloudConnection,
                                 isTestingCloud = uiState.isTestingCloud,
                                 cloudTestMessage = uiState.cloudTestMessage,
-                                isCloudConnected = uiState.isCloudConnected
+                                isCloudConnected = uiState.isCloudConnected,
+                                // v0.3.3: skeleton until the first REAL
+                                // fleet state has loaded — persisted
+                                // state emitted AND (when cloud viewing
+                                // is configured) the first cloud fetch
+                                // completed. See HomeLoadState.
+                                isLoading = !HomeLoadState.isLoaded(
+                                    isInitialStateLoaded = uiState.isInitialStateLoaded,
+                                    cloudConfigured = uiState.cloudConfig.userName.isNotBlank() &&
+                                        uiState.cloudConfig.webhookUrl.isNotBlank(),
+                                    hasCompletedFirstCloudFetch = uiState.hasCompletedFirstCloudFetch
+                                )
                             )
                         }
                         DashboardTab.HARDWARE -> {
@@ -432,7 +444,11 @@ fun MainDashboardScreen(
                     lastError = uiState.relayLastError,
                     appVersion = viewModel.installedVersionName() ?: "?",
                     onRefreshStatus = viewModel::refreshRelayStatus,
-                    onExit = { viewModel.setRelayOnlyMode(false) }
+                    onExit = { viewModel.setRelayOnlyMode(false) },
+                    // v0.3.3: skeleton panels until the persisted
+                    // state has been emitted into the UI state — the
+                    // pre-load defaults must not read as real state.
+                    isLoading = !uiState.isInitialStateLoaded
                 )
             }
             // Add-miner setup: scan/manual add flow, reached only by an
