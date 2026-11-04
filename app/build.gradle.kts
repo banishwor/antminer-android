@@ -51,6 +51,9 @@ kotlin {
 }
 
 dependencies {
+  // Shared relay core (Step 2): models, CGI client, cloud sync, relay engine.
+  implementation(project(":relay-core"))
+
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
   androidTestImplementation(composeBom)
