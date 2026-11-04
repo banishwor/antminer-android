@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.relay.RelayStorage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.KeyStore
@@ -24,8 +25,13 @@ import javax.crypto.spec.GCMParameterSpec
  * it encrypted, so an app update never loses saved profiles. The prefs file
  * is also excluded from Android backups (see res/xml/backup_rules.xml and
  * data_extraction_rules.xml).
+ *
+ * This is the main app's [RelayStorage] implementation for the shared
+ * relay engine in :relay-core — the Keystore AES-GCM scheme below is
+ * API 23+, which is exactly why the engine depends on the interface
+ * rather than on this class.
  */
-class MinerStorageManager(context: Context) {
+class MinerStorageManager(context: Context) : RelayStorage {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("antminer_saved_profiles", Context.MODE_PRIVATE)
 
@@ -88,7 +94,7 @@ class MinerStorageManager(context: Context) {
         return value != null && value.startsWith(ENCRYPTED_PREFIX)
     }
 
-    fun loadSavedProfiles(): List<MinerProfile> {
+    override fun loadSavedProfiles(): List<MinerProfile> {
         val stored = prefs.getString(KEY_PROFILES, null) ?: return emptyList()
 
         val encrypted = isEncryptedPayload(stored)
@@ -139,7 +145,7 @@ class MinerStorageManager(context: Context) {
         return list
     }
 
-    fun saveProfiles(profiles: List<MinerProfile>) {
+    override fun saveProfiles(profiles: List<MinerProfile>) {
         try {
             val array = JSONArray()
             profiles.forEach { profile ->
@@ -236,7 +242,7 @@ class MinerStorageManager(context: Context) {
      * is the relay's actual state, not the UI's guess. A null timestamp
      * argument keeps the stored one; a null error clears it.
      */
-    fun saveRelayStatus(lastUploadMs: Long?, error: String?) {
+    override fun saveRelayStatus(lastUploadMs: Long?, error: String?) {
         val editor = prefs.edit()
         if (lastUploadMs != null) {
             editor.putLong(KEY_RELAY_LAST_UPLOAD_MS, lastUploadMs)
@@ -291,7 +297,7 @@ class MinerStorageManager(context: Context) {
         }
     }
 
-    fun loadCloudConfig(): com.example.antminerconnectiontest.domain.model.CloudSyncConfig {
+    override fun loadCloudConfig(): com.example.antminerconnectiontest.domain.model.CloudSyncConfig {
         val savedUrl = prefs.getString("cloud_webhook_url", null)
         return com.example.antminerconnectiontest.domain.model.CloudSyncConfig(
             webhookUrl = if (savedUrl.isNullOrBlank()) com.example.antminerconnectiontest.domain.model.CloudSyncConfig.DEFAULT_WEBHOOK_URL else savedUrl,
