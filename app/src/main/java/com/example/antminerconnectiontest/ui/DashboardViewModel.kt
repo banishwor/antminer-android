@@ -625,7 +625,7 @@ class DashboardViewModel(
         val snapshot = entry.remoteSnapshot
         when {
             snapshot != null -> selectRemoteMiner(snapshot, switchToHome = false)
-            entry.localProfile != null -> selectSavedProfile(entry.localProfile)
+            entry.localProfile != null -> entry.localProfile?.let { selectSavedProfile(it) }
         }
     }
 

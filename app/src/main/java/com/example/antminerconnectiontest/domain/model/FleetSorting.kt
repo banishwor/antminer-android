@@ -130,7 +130,7 @@ object FleetSorting {
             return when {
                 workerLabel.isNotBlank() && row.poolBrand != null -> "${row.poolBrand} · $workerLabel"
                 workerLabel.isNotBlank() -> workerLabel
-                entry.localProfile != null -> entry.localProfile.host
+                entry.localProfile != null -> entry.localProfile?.host.orEmpty()
                 row.isRemoteOnly -> "Remote machine"
                 else -> ""
             }
