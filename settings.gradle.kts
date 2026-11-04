@@ -33,3 +33,4 @@ rootProject.name = "Antminer Connection Test"
 include(":app")
 include(":relay-probe")
 include(":relay-core")
+include(":relay-lite")
