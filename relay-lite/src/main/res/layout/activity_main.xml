@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Relay Lite v0.1.1 screen — approved mockup: light theme only,
+     flat #F2F2F7 page, white rounded grouped sections with hairline
+     dividers, black text, Apple blue #007AFF as the only accent.
+     Order: header, STATUS hero, RELAY, IDENTITY, SAVED MINERS,
+     STATUS DETAILS, APP, SETUP. All ids/logic from v0.1.0 preserved;
+     Start/Stop buttons are gone (the one switch drives the service). -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#F2F2F7">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -9,201 +16,512 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- HEADER -->
         <TextView
             android:id="@+id/headerText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="20sp"
+            android:textColor="#000000"
+            android:textSize="21sp"
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/headerSub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="FIRST-RUN SETUP (Vivo Y21L)\n1. Open i-Manager → App manager → Autostart management → turn Antminer Relay Lite ON (without this, the relay cannot restart after a reboot).\n2. In i-Manager → Power Manager, keep the power mode on Normal.\n3. Set your relay name below, turn Relay ON, then reboot once and confirm this screen shows the service running again."
+            android:layout_marginTop="2dp"
+            android:textColor="#6E6E73"
             android:textSize="13sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="RELAY"
-            android:textStyle="bold" />
-
+        <!-- STATUS HERO -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_group"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="11dp"
+                    android:layout_height="11dp"
+                    android:background="@drawable/dot_off" />
+
+                <TextView
+                    android:id="@+id/statusWord"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="9dp"
+                    android:textColor="#000000"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/heroRelayLine"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="#6E6E73"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/heroUploadLine"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#6E6E73"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- RELAY -->
+        <TextView
+            style="@style/LiteGroupLabel"
+            android:text="RELAY" />
+
+        <LinearLayout
+            style="@style/LiteGroup"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Relay" />
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/LiteRowName"
+                    android:text="Relay" />
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:text="Uploads this location's miners to the sheet" />
+            </LinearLayout>
 
             <Switch
                 android:id="@+id/relaySwitch"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:switchMinWidth="51dp"
+                android:thumb="@drawable/switch_thumb"
+                android:track="@drawable/switch_track" />
         </LinearLayout>
 
+        <!-- IDENTITY -->
+        <TextView
+            style="@style/LiteGroupLabel"
+            android:text="IDENTITY" />
+
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+            style="@style/LiteGroup"
+            android:divider="@drawable/divider_hairline"
+            android:orientation="vertical"
+            android:padding="0dp"
+            android:showDividers="middle">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Relay username — this phone's location name" />
+
+                <EditText
+                    android:id="@+id/userNameField"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@null"
+                    android:hint="e.g. sabaltongba"
+                    android:inputType="textNoSuggestions"
+                    android:paddingBottom="2dp"
+                    android:paddingTop="4dp"
+                    android:singleLine="true"
+                    android:textColor="#000000"
+                    android:textColorHint="#AEAEB2"
+                    android:textSize="16sp" />
+            </LinearLayout>
 
             <Button
-                android:id="@+id/startButton"
-                android:layout_width="0dp"
+                android:id="@+id/saveIdentityButton"
+                style="@style/LiteBlueButton"
+                android:text="Save identity" />
+
+            <LinearLayout
+                android:id="@+id/advancedToggle"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Start service" />
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/LiteRowName"
+                        android:text="Advanced" />
+
+                    <TextView
+                        android:id="@+id/advancedDetail"
+                        style="@style/LiteRowDetail"
+                        android:text="Webhook URL" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="›"
+                    android:textColor="#6E6E73"
+                    android:textSize="20sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/advancedContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Webhook URL" />
+
+                <EditText
+                    android:id="@+id/webhookField"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@null"
+                    android:inputType="textUri|textNoSuggestions"
+                    android:paddingBottom="2dp"
+                    android:paddingTop="4dp"
+                    android:singleLine="true"
+                    android:textColor="#000000"
+                    android:textColorHint="#AEAEB2"
+                    android:textSize="13sp" />
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:text="Hidden by default so it can't be pasted over by accident." />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- SAVED MINERS -->
+        <TextView
+            style="@style/LiteGroupLabel"
+            android:text="SAVED MINERS" />
+
+        <LinearLayout
+            style="@style/LiteGroup"
+            android:divider="@drawable/divider_hairline"
+            android:orientation="vertical"
+            android:padding="0dp"
+            android:showDividers="middle">
+
+            <LinearLayout
+                android:id="@+id/profilesContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:divider="@drawable/divider_hairline"
+                android:orientation="vertical"
+                android:showDividers="middle" />
+
+            <LinearLayout
+                android:id="@+id/addMinerToggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Add a miner"
+                    android:textColor="#007AFF"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="›"
+                    android:textColor="#6E6E73"
+                    android:textSize="20sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/addMinerContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Worker identity (optional — learned automatically on first connect)" />
+
+                <EditText
+                    android:id="@+id/workerField"
+                    style="@style/LiteField"
+                    android:hint="e.g. banishwor.001"
+                    android:inputType="textNoSuggestions" />
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:text="Miner IP address" />
+
+                <EditText
+                    android:id="@+id/hostField"
+                    style="@style/LiteField"
+                    android:hint="e.g. 192.168.1.2"
+                    android:inputType="textNoSuggestions" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal">
+
+                    <EditText
+                        android:id="@+id/minerUserField"
+                        style="@style/LiteField"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:hint="Username"
+                        android:inputType="textNoSuggestions" />
+
+                    <EditText
+                        android:id="@+id/minerPassField"
+                        style="@style/LiteField"
+                        android:layout_width="0dp"
+                        android:layout_marginLeft="12dp"
+                        android:layout_weight="1"
+                        android:hint="Password"
+                        android:inputType="textPassword" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/addMinerButton"
+                    style="@style/LiteBlueButton"
+                    android:layout_marginTop="6dp"
+                    android:paddingLeft="0dp"
+                    android:text="Add miner" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- STATUS DETAILS -->
+        <TextView
+            style="@style/LiteGroupLabel"
+            android:text="STATUS DETAILS" />
+
+        <LinearLayout
+            style="@style/LiteGroup"
+            android:divider="@drawable/divider_hairline"
+            android:orientation="vertical"
+            android:padding="0dp"
+            android:showDividers="middle">
+
+            <LinearLayout style="@style/LiteDetailRow">
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Engine" />
+                <TextView
+                    android:id="@+id/engineText"
+                    style="@style/LiteRowValue" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/LiteDetailRow">
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Status updated" />
+                <TextView
+                    android:id="@+id/statusUpdatedText"
+                    style="@style/LiteRowValue" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/LiteDetailRow">
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Service starts · Boot-triggered starts" />
+                <TextView
+                    android:id="@+id/countersText"
+                    style="@style/LiteRowValue" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/LiteDetailRow">
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Last error" />
+                <TextView
+                    android:id="@+id/lastErrorText"
+                    style="@style/LiteRowValue" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- APP -->
+        <TextView
+            style="@style/LiteGroupLabel"
+            android:text="APP" />
+
+        <LinearLayout
+            style="@style/LiteGroup"
+            android:divider="@drawable/divider_hairline"
+            android:orientation="vertical"
+            android:padding="0dp"
+            android:showDividers="middle">
+
+            <LinearLayout style="@style/LiteDetailRow">
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:layout_marginTop="0dp"
+                    android:text="Version" />
+                <TextView
+                    android:id="@+id/versionText"
+                    style="@style/LiteRowValue" />
+            </LinearLayout>
 
             <Button
-                android:id="@+id/stopButton"
-                android:layout_width="0dp"
+                android:id="@+id/checkUpdatesButton"
+                style="@style/LiteBlueButton"
+                android:text="Check for updates" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:text="Stop service" />
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:id="@+id/updateResultText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#000000"
+                    android:textSize="15sp" />
+
+                <TextView
+                    style="@style/LiteRowDetail"
+                    android:text="Checks only when you tap — never in the background." />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- SETUP -->
+        <TextView
+            style="@style/LiteGroupLabel"
+            android:text="SETUP" />
+
+        <LinearLayout
+            style="@style/LiteGroup"
+            android:divider="@drawable/divider_hairline"
+            android:orientation="vertical"
+            android:padding="0dp"
+            android:showDividers="middle">
+
+            <LinearLayout
+                android:id="@+id/setupToggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:minHeight="48dp"
+                android:orientation="horizontal"
+                android:padding="14dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/LiteRowName"
+                        android:text="First-run setup" />
+
+                    <TextView
+                        style="@style/LiteRowDetail"
+                        android:text="Tap to review" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="›"
+                    android:textColor="#6E6E73"
+                    android:textSize="20sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/setupContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:divider="@drawable/divider_hairline"
+                android:orientation="vertical"
+                android:showDividers="middle"
+                android:visibility="gone">
+
+                <LinearLayout style="@style/LiteDetailRow">
+                    <TextView
+                        style="@style/LiteRowValue"
+                        android:text="1. Autostart in i-Manager" />
+                    <TextView
+                        style="@style/LiteRowDetail"
+                        android:text="Open i-Manager → App manager → Autostart management → turn Antminer Relay Lite ON (without this, the relay cannot restart after a reboot)." />
+                </LinearLayout>
+
+                <LinearLayout style="@style/LiteDetailRow">
+                    <TextView
+                        style="@style/LiteRowValue"
+                        android:text="2. Power Manager on Normal" />
+                    <TextView
+                        style="@style/LiteRowDetail"
+                        android:text="In i-Manager → Power Manager, keep the power mode on Normal." />
+                </LinearLayout>
+
+                <LinearLayout style="@style/LiteDetailRow">
+                    <TextView
+                        style="@style/LiteRowValue"
+                        android:text="3. Reboot once and check" />
+                    <TextView
+                        style="@style/LiteRowDetail"
+                        android:text="Set your relay name, turn Relay ON, then reboot once and confirm this screen shows the service running again." />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="IDENTITY"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Relay username (this phone's relay identity)" />
-
-        <EditText
-            android:id="@+id/userNameField"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="e.g. Master"
-            android:inputType="textNoSuggestions"
-            android:singleLine="true" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Webhook URL" />
-
-        <EditText
-            android:id="@+id/webhookField"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textUri|textNoSuggestions"
-            android:singleLine="true" />
-
-        <Button
-            android:id="@+id/saveIdentityButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Save identity" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="ADD A MINER (saved on this phone)"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Worker identity (optional — learned automatically on first connect)" />
-
-        <EditText
-            android:id="@+id/workerField"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="e.g. banishwor.001"
-            android:inputType="textNoSuggestions"
-            android:singleLine="true" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Miner IP address" />
-
-        <EditText
-            android:id="@+id/hostField"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="e.g. 192.168.1.2"
-            android:inputType="textNoSuggestions"
-            android:singleLine="true" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/minerUserField"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Username"
-                android:inputType="textNoSuggestions"
-                android:singleLine="true" />
-
-            <EditText
-                android:id="@+id/minerPassField"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="8dp"
-                android:layout_weight="1"
-                android:hint="Password"
-                android:inputType="textPassword"
-                android:singleLine="true" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/addMinerButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Add miner" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Saved miners (tap ✕ to remove)" />
-
-        <LinearLayout
-            android:id="@+id/profilesContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="STATUS"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textSize="13sp" />
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="One screen — status first.\nNothing here changes how the relay itself runs."
+            android:textColor="#6E6E73"
+            android:textSize="12sp" />
 
     </LinearLayout>
 </ScrollView>

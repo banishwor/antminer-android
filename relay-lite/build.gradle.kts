@@ -20,8 +20,8 @@ android {
         applicationId = "com.banishwor.antminerrelay"
         minSdk = 22
         targetSdk = 22
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
     }
 
     buildTypes {
