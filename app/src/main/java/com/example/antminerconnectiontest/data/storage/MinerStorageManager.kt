@@ -41,7 +41,11 @@ class MinerStorageManager(context: Context) : RelayStorage {
         private const val KEY_START_CHOICE = "key_start_choice"
         private const val KEY_THEME_MODE = "key_theme_mode"
         private const val KEY_PHONE_NICKNAMES = "key_phone_nicknames"
-        private const val KEY_APP_STYLE = "key_app_style"
+        // v0.5.0: the pre-v0.5.0 "key_app_style" preference is retired
+        // with the Violet style. Nothing reads or writes it anymore;
+        // a value persisted by an older install simply stays in the
+        // preferences file, unread and harmless, and the app always
+        // opens in the one remaining (Grouped Sheets) design.
         private const val KEY_RELAY_ONLY = "key_relay_only"
         private const val KEY_RELAY_LAST_UPLOAD_MS = "relay_last_upload_ms"
         private const val KEY_RELAY_LAST_ERROR = "relay_last_error"
@@ -207,18 +211,6 @@ class MinerStorageManager(context: Context) : RelayStorage {
 
     fun saveThemeMode(modeName: String) {
         prefs.edit().putString(KEY_THEME_MODE, modeName).apply()
-    }
-
-    /**
-     * The appearance style ("VIOLET" / "LIQUID_GLASS"), or null when
-     * never chosen — the app then uses the Violet default.
-     */
-    fun loadAppStyle(): String? {
-        return prefs.getString(KEY_APP_STYLE, null)
-    }
-
-    fun saveAppStyle(styleName: String) {
-        prefs.edit().putString(KEY_APP_STYLE, styleName).apply()
     }
 
     /**

@@ -53,17 +53,11 @@ fun InteractiveHashrateChart(
     var viewMode by remember { mutableStateOf(ChartViewMode.TOTAL) }
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
-    // Series colours resolve per style (theme/StatusColors): Violet
-    // keeps its violet-family series; Grouped Sheets draws the total
-    // in Apple blue over the mockup's grey chain lines.
+    // Series colours (theme/StatusColors): Grouped Sheets draws the
+    // total in Apple blue over the mockup's grey chain lines.
     val chainColors = chainSeriesColors()
     val totalColor = accentOk()
-    val isGrouped = LocalGlassSettings.current.isGlass
-    val toggleSelectedText = if (isGrouped) {
-        MaterialTheme.colorScheme.onPrimary
-    } else {
-        Color(0xFF003919)
-    }
+    val toggleSelectedText = MaterialTheme.colorScheme.onPrimary
 
     // Calculate Y-scale bounds
     val allValues = remember(points, viewMode) {

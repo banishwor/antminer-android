@@ -397,14 +397,8 @@ private fun RemoteRowItem(
 }
 
 /**
- * The switcher sheet's offline red: a raw #EF4444 in the Violet
- * style (its long-standing value); the scheme error slot (text
- * colour) in the monochrome grouped design.
+ * The switcher sheet's offline dot colour: the scheme error slot
+ * (text colour) in the monochrome grouped design.
  */
 @Composable
-private fun offlineDotColor(): Color =
-    if (LocalGlassSettings.current.isGlass) {
-        MaterialTheme.colorScheme.error
-    } else {
-        Color(0xFFEF4444)
-    }
+private fun offlineDotColor(): Color = MaterialTheme.colorScheme.error

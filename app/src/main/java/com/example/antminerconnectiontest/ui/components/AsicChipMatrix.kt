@@ -63,23 +63,10 @@ fun AsicChipMatrix(
     // Grouped Sheets (v0.4.0): the matrix goes monochrome like the
     // mockup — healthy cells are the flat grey cell colour, a dead
     // chip is a solid text-colour cell, missing is the hairline tone.
-    // Violet keeps its emerald/ruby/slate cells.
     val glassSettings = LocalGlassSettings.current
-    val okCellColor = if (glassSettings.isGlass) {
-        GroupedSheetsSpec.chipCell(glassSettings.isDark)
-    } else {
-        AntminerEmerald
-    }
-    val errorCellColor = if (glassSettings.isGlass) {
-        MaterialTheme.colorScheme.onSurface
-    } else {
-        ErrorRuby
-    }
-    val missingCellColor = if (glassSettings.isGlass) {
-        MaterialTheme.colorScheme.outline
-    } else {
-        Color(0xFF334155)
-    }
+    val okCellColor = GroupedSheetsSpec.chipCell(glassSettings.isDark)
+    val errorCellColor = MaterialTheme.colorScheme.onSurface
+    val missingCellColor = MaterialTheme.colorScheme.outline
 
     val operationalCount = chips.count { it.state == AsicChipState.OPERATIONAL }
     val defectiveCount = chips.count { it.state == AsicChipState.DEFECTIVE }

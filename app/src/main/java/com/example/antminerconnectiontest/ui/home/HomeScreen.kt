@@ -109,7 +109,14 @@ fun HomeScreen(
      * in the shapes of its real layout and NONE of the empty-state
      * content. Driven by explicit state-flow signals, never a timer.
      */
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    /**
+     * Extra space appended at the bottom of the scrolling region so
+     * the last rows can scroll clear of the floating dock (v0.5.0 —
+     * the shell passes the dock's reserved height; the content itself
+     * runs underneath the dock).
+     */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     // Remote display is ALWAYS a deliberate selection (v0.1.9 rule,
     // unchanged): no silent swap to a cloud feed. The one designed
@@ -384,6 +391,9 @@ fun HomeScreen(
                     )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
+                // Dock clearance (v0.5.0): lets the footer scroll
+                // fully above the floating dock.
+                Spacer(modifier = Modifier.height(bottomInset))
             }
         }
     }
@@ -500,31 +510,16 @@ private fun SkeletonBar(width: androidx.compose.ui.unit.Dp, height: androidx.com
 @Composable
 private fun StalePill() {
     // Grouped Sheets: the STALE pill is neutral — grey fill, secondary
-    // text; the word carries the state. Violet keeps the amber pill.
-    if (LocalGlassSettings.current.isGlass) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(4.dp)
-        ) {
-            Text(
-                text = "STALE",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-        }
-        return
-    }
+    // text; the word carries the state.
     Surface(
-        color = WarningAmber.copy(alpha = 0.15f),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(4.dp)
     ) {
         Text(
             text = "STALE",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = WarningAmber,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
@@ -547,11 +542,9 @@ private fun SelectedMachineHero(
     onEditNickname: (() -> Unit)?
 ) {
     val dataFont = LocalDataFontFamily.current
-    // Grouped Sheets (v0.4.0): in the Glass style the hero is a flat
-    // grouped panel like every other surface — opaque fill, hairline
-    // border, no backdrop. (v0.3.0's translucent glass hero is gone;
-    // glass now lives only in the bottom dock.)
-    val glass = LocalGlassSettings.current
+    // Grouped Sheets (v0.4.0): the hero is a flat grouped panel like
+    // every other surface — opaque fill, hairline border, no backdrop;
+    // glass lives only in the bottom dock.
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -679,40 +672,23 @@ private fun SelectedMachineHero(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (glass.isGlass) {
-                    // Mockup .pill.on / .pill.off: ONLINE is a SOLID
-                    // text-colour pill with background-colour text;
-                    // OFFLINE is the neutral grey chip. The word
-                    // carries the state either way.
-                    Surface(
-                        color = if (summary.isOnline) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = summary.statusText.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (summary.isOnline) MaterialTheme.colorScheme.background
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                } else {
-                    Surface(
-                        color = if (summary.isOnline) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                        else MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = summary.statusText.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (summary.isOnline) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
+                // Mockup .pill.on / .pill.off: ONLINE is a SOLID
+                // text-colour pill with background-colour text;
+                // OFFLINE is the neutral grey chip. The word
+                // carries the state either way.
+                Surface(
+                    color = if (summary.isOnline) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = summary.statusText.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (summary.isOnline) MaterialTheme.colorScheme.background
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
                 }
                 if (summary.uptimeLabel.isNotBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -769,15 +745,10 @@ private fun NeedsPasswordCard(
     machine: NeedsPasswordMachine,
     onClick: () -> Unit
 ) {
-    val pwGlass = LocalGlassSettings.current.isGlass
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(
-            containerColor = if (pwGlass) {
-                MaterialTheme.colorScheme.surface
-            } else {
-                WarningAmber.copy(alpha = 0.12f)
-            }
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         border = panelBorder(),
         modifier = Modifier
@@ -791,7 +762,7 @@ private fun NeedsPasswordCard(
             Icon(
                 imageVector = Icons.Default.Lock,
                 contentDescription = null,
-                tint = if (pwGlass) MaterialTheme.colorScheme.onSurfaceVariant else WarningAmber,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
@@ -1015,8 +986,7 @@ private fun FleetHeaderCard(
     }
 
     // Grouped Sheets (v0.4.0): the fleet strip is a plain grouped
-    // panel — hairline border, opaque fill (panelBorder is null in
-    // the Violet style, whose card stays borderless as before).
+    // panel — hairline border, opaque fill.
     Card(
         shape = panelShape(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

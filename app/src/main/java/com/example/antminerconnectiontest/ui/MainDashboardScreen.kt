@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -151,20 +153,18 @@ fun MainDashboardScreen(
     val identityDetail: MinerDetailUi? =
         if (activeProfile == null || useCloudTabs) selectedRemoteDetail else null
 
-    // Liquid Glass capability for THIS device (v0.3.0): the low-end
+    // Glass capability tier for THIS device (v0.3.0): the low-end
     // guard — low-RAM or pre-Android 12 devices get glass-lite (no
-    // live blur) even when the style is selected.
+    // live blur) in the dock backdrop.
     val glassTier = rememberGlassTier()
     val isDarkResolved = when (uiState.themeMode) {
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    val isGlass = uiState.appStyle == AppStyle.LIQUID_GLASS
 
     AntminerConnectionTestTheme(
         themeMode = uiState.themeMode,
-        appStyle = uiState.appStyle,
         glassTier = glassTier
     ) {
         // Top-level routing (see MainShellRouting): ONE shell for
@@ -178,30 +178,32 @@ fun MainDashboardScreen(
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    if (isGlass) {
-                        GlassTabBarCapsule(isDark = isDarkResolved) {
-                            DashboardNavItems(
-                                selectedTab = uiState.selectedTab,
-                                onSelect = viewModel::selectDashboardTab
-                            )
-                        }
-                    } else {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 8.dp
-                        ) {
-                            DashboardNavItems(
-                                selectedTab = uiState.selectedTab,
-                                onSelect = viewModel::selectDashboardTab
-                            )
-                        }
+                    GlassTabBarCapsule(isDark = isDarkResolved) {
+                        DashboardNavItems(
+                            selectedTab = uiState.selectedTab,
+                            onSelect = viewModel::selectDashboardTab
+                        )
                     }
                 }
             ) { paddingValues ->
+                // Floating dock (v0.5.0): the content applies only the
+                // TOP (and side) Scaffold insets and runs full-height
+                // UNDER the dock — the Scaffold's bottom inset is NOT
+                // applied, so no opaque strip is reserved behind the
+                // translucent capsule and scrolling content passes
+                // visibly beneath it. Each tab screen instead receives
+                // [GlassTabBarSpec.ReservedHeight] as its bottom
+                // content inset, so its last rows can still scroll
+                // clear of the dock.
+                val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(paddingValues)
+                        .padding(
+                            start = paddingValues.calculateStartPadding(layoutDirection),
+                            end = paddingValues.calculateEndPadding(layoutDirection),
+                            top = paddingValues.calculateTopPadding()
+                        )
                 ) {
                     when (uiState.selectedTab) {
                         DashboardTab.HOME -> {
@@ -238,6 +240,7 @@ fun MainDashboardScreen(
                                 isTestingCloud = uiState.isTestingCloud,
                                 cloudTestMessage = uiState.cloudTestMessage,
                                 isCloudConnected = uiState.isCloudConnected,
+                                bottomInset = GlassTabBarSpec.ReservedHeight,
                                 // v0.3.3: skeleton until the first REAL
                                 // fleet state has loaded — persisted
                                 // state emitted AND (when cloud viewing
@@ -259,7 +262,10 @@ fun MainDashboardScreen(
                                 onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
-                                    RemoteHardwareTab(detail = selectedRemoteDetail)
+                                    RemoteHardwareTab(
+                                        detail = selectedRemoteDetail,
+                                        bottomInset = GlassTabBarSpec.ReservedHeight
+                                    )
                                 } else {
                                     HardwareScreen(
                                         profile = activeProfile,
@@ -268,7 +274,8 @@ fun MainDashboardScreen(
                                         isRefreshing = uiState.isRefreshing,
                                         onManualRefresh = viewModel::manualRefresh,
                                         dashboardError = uiState.dashboardError,
-                                        onRetry = viewModel::manualRefresh
+                                        onRetry = viewModel::manualRefresh,
+                                        bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }
                             }
@@ -281,7 +288,10 @@ fun MainDashboardScreen(
                                 onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
-                                    RemotePoolsTab(detail = selectedRemoteDetail)
+                                    RemotePoolsTab(
+                                        detail = selectedRemoteDetail,
+                                        bottomInset = GlassTabBarSpec.ReservedHeight
+                                    )
                                 } else {
                                     PoolsScreen(
                                         profile = activeProfile,
@@ -289,7 +299,8 @@ fun MainDashboardScreen(
                                         isRefreshing = uiState.isRefreshing,
                                         onManualRefresh = viewModel::manualRefresh,
                                         dashboardError = uiState.dashboardError,
-                                        onRetry = viewModel::manualRefresh
+                                        onRetry = viewModel::manualRefresh,
+                                        bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }
                             }
@@ -304,7 +315,10 @@ fun MainDashboardScreen(
                                 if (useCloudTabs || activeProfile == null) {
                                     // The selected machine's logs are
                                     // on-location: the panel names it.
-                                    RemoteLogsTab(detail = selectedRemoteDetail)
+                                    RemoteLogsTab(
+                                        detail = selectedRemoteDetail,
+                                        bottomInset = GlassTabBarSpec.ReservedHeight
+                                    )
                                 } else {
                                     LogsScreen(
                                         profile = activeProfile,
@@ -324,7 +338,8 @@ fun MainDashboardScreen(
                                         onStartDailyAnalysis = viewModel::startDailyAnalysis,
                                         onOpenAnalysisDetail = viewModel::openDailyAnalysisDetail,
                                         onCloseAnalysisDetail = viewModel::closeDailyAnalysisDetail,
-                                        onRefreshDailyDates = { viewModel.loadDailyAnalysisDates(forceRefresh = true) }
+                                        onRefreshDailyDates = { viewModel.loadDailyAnalysisDates(forceRefresh = true) },
+                                        bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }
                             }
@@ -342,9 +357,7 @@ fun MainDashboardScreen(
                                 isCloudConnected = uiState.isCloudConnected,
                                 onManualRefresh = viewModel::manualRefresh,
                                 onSetThemeMode = viewModel::setThemeMode,
-                                appStyle = uiState.appStyle,
-                                glassTier = glassTier,
-                                onSetAppStyle = viewModel::setAppStyle,
+                                bottomInset = GlassTabBarSpec.ReservedHeight,
                                 relayOnlyMode = uiState.relayOnlyMode,
                                 onSetRelayOnlyMode = viewModel::setRelayOnlyMode,
                                 onSelectProfile = viewModel::selectSavedProfile,
@@ -403,7 +416,7 @@ fun MainDashboardScreen(
                     }
                 }
             }
-            } // wallpaper Box
+            } // shell Box
             }
             // Relay-only (v0.3.0): the whole app is this one status
             // screen — no nav, no tabs. The relay underneath runs
@@ -513,33 +526,27 @@ fun MainDashboardScreen(
 }
 
 /**
- * The five bottom-navigation items, shared by the solid [NavigationBar]
- * (Violet style) and the floating glass capsule (Liquid Glass style) —
- * same destinations, same selection colours, only the container
- * material differs.
+ * The five bottom-navigation items of the floating glass capsule —
+ * the V3 mockup's destinations and monochrome-with-blue-accent
+ * selection treatment.
  */
 @Composable
 private fun RowScope.DashboardNavItems(
     selectedTab: DashboardTab,
     onSelect: (DashboardTab) -> Unit
 ) {
-    val grouped = LocalGlassSettings.current.isGlass
     @Composable
     fun itemColors() = NavigationBarItemDefaults.colors(
         selectedIconColor = MaterialTheme.colorScheme.primary,
         selectedTextColor = MaterialTheme.colorScheme.primary,
-        indicatorColor = if (grouped) {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f)
-        } else {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-        },
+        indicatorColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.14f),
         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
     NavigationBarItem(
         selected = selectedTab == DashboardTab.HOME,
         onClick = { onSelect(DashboardTab.HOME) },
-        icon = { Icon(if (grouped) Icons.Default.Home else Icons.Default.Dashboard, contentDescription = "Home") },
+        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
         label = { Text("Home") },
         colors = itemColors()
     )
@@ -553,21 +560,21 @@ private fun RowScope.DashboardNavItems(
     NavigationBarItem(
         selected = selectedTab == DashboardTab.POOLS,
         onClick = { onSelect(DashboardTab.POOLS) },
-        icon = { Icon(if (grouped) Icons.Default.Layers else Icons.Default.Storage, contentDescription = "Pools") },
+        icon = { Icon(Icons.Default.Layers, contentDescription = "Pools") },
         label = { Text("Pools") },
         colors = itemColors()
     )
     NavigationBarItem(
         selected = selectedTab == DashboardTab.LOGS,
         onClick = { onSelect(DashboardTab.LOGS) },
-        icon = { Icon(if (grouped) Icons.AutoMirrored.Filled.ListAlt else Icons.Default.Terminal, contentDescription = "Logs") },
+        icon = { Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Logs") },
         label = { Text("Logs") },
         colors = itemColors()
     )
     NavigationBarItem(
         selected = selectedTab == DashboardTab.DEVICE,
         onClick = { onSelect(DashboardTab.DEVICE) },
-        icon = { Icon(if (grouped) Icons.Default.Settings else Icons.Default.Devices, contentDescription = "Settings") },
+        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
         label = { Text("Settings") },
         colors = itemColors()
     )
@@ -587,10 +594,14 @@ private fun RowScope.DashboardNavItems(
  * margins — and nothing inside it may influence its size. The v0.3.0
  * version let the backdrop's `fillMaxSize()` resolve against the
  * Scaffold bottomBar slot's full-screen maxHeight, inflating the
- * capsule into a screen-filling pill that hid all content. It lives
- * in the bottomBar slot, so the Scaffold's content padding already
- * reserves exactly [GlassTabBarSpec.ReservedHeight] above it and no
- * content can slide behind it.
+ * capsule into a screen-filling pill that hid all content.
+ *
+ * Floating (v0.5.0): it still lives in the bottomBar slot, but the
+ * shell no longer applies the Scaffold's bottom content inset, so
+ * screen content runs full-height underneath and shows through the
+ * translucent material as it scrolls. Each screen keeps
+ * [GlassTabBarSpec.ReservedHeight] of bottom content padding so its
+ * last rows can scroll clear of the capsule.
  */
 @Composable
 private fun GlassTabBarCapsule(

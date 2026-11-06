@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-import com.example.antminerconnectiontest.theme.AppStyle
 import com.example.antminerconnectiontest.theme.ThemeMode
 import com.example.antminerconnectiontest.data.analysis.DailyLogAnalyzer
 import com.example.antminerconnectiontest.data.storage.DailyAnalysisStorageManager
@@ -89,8 +88,6 @@ data class AppUiState(
     val scannerPasswordInput: String = "root",
     val isScannerPasswordVisible: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    /** Appearance style (v0.3.0): solid Violet (default) or Liquid Glass. */
-    val appStyle: AppStyle = AppStyle.VIOLET,
     /**
      * Relay-only mode (v0.3.0): the persisted Settings switch. When
      * true the app shows only the relay status screen; the relay
@@ -102,7 +99,7 @@ data class AppUiState(
     /** Last relay upload error, as reported by the relay itself (persisted). */
     val relayLastError: String? = null,
     /**
-     * The persisted state (cloud config, theme, appearance style,
+     * The persisted state (cloud config, theme,
      * relay-only switch, relay status, saved profiles, nicknames) has
      * been loaded into this state (v0.3.3). False only in the pre-load
      * default state: screens that render persisted values (relay-only
@@ -284,14 +281,6 @@ class DashboardViewModel(
         } catch (_: Throwable) {}
     }
 
-    /** Appearance style (v0.3.0): Violet (default) or Liquid Glass. Persisted like the theme mode. */
-    fun setAppStyle(style: AppStyle) {
-        _uiState.update { it.copy(appStyle = style) }
-        try {
-            storageManager?.saveAppStyle(style.name)
-        } catch (_: Throwable) {}
-    }
-
     /**
      * Relay-only mode (v0.3.0): persisted, so a site phone restarts
      * back into relay-only. Turning it on also closes the setup flow
@@ -384,15 +373,16 @@ class DashboardViewModel(
             val savedThemeMode = storageManager.loadThemeMode()?.let { stored ->
                 ThemeMode.values().firstOrNull { it.name == stored }
             } ?: ThemeMode.SYSTEM
-            val savedAppStyle = storageManager.loadAppStyle()?.let { stored ->
-                AppStyle.values().firstOrNull { it.name == stored }
-            } ?: AppStyle.VIOLET
+            // v0.5.0: the appearance style is no longer loaded — the
+            // Violet style is gone and Grouped Sheets is the only
+            // design. A "key_app_style" value persisted by an older
+            // install (e.g. "VIOLET") is simply never read again; the
+            // app always opens in the one remaining design.
             val (savedLastUpload, savedRelayError) = storageManager.loadRelayStatus()
             _uiState.update {
                 it.copy(
                     cloudConfig = savedCloudConfig,
                     themeMode = savedThemeMode,
-                    appStyle = savedAppStyle,
                     relayOnlyMode = storageManager.loadRelayOnlyMode(),
                     lastRelayUploadAtMs = savedLastUpload,
                     relayLastError = savedRelayError,

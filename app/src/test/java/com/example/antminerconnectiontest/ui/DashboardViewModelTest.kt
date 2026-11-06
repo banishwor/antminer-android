@@ -456,28 +456,8 @@ class DashboardViewModelTest {
         assertEquals("miner_1", viewModel.uiState.value.activeProfile?.id)
     }
 
-    // ── v0.3.0: appearance style + relay-only mode ───────────────────
-
-    @Test
-    fun appStyle_defaultsToViolet_andCanSwitchToLiquidGlass() {
-        val viewModel = DashboardViewModel()
-        assertEquals(
-            com.example.antminerconnectiontest.theme.AppStyle.VIOLET,
-            viewModel.uiState.value.appStyle
-        )
-
-        viewModel.setAppStyle(com.example.antminerconnectiontest.theme.AppStyle.LIQUID_GLASS)
-        assertEquals(
-            com.example.antminerconnectiontest.theme.AppStyle.LIQUID_GLASS,
-            viewModel.uiState.value.appStyle
-        )
-
-        viewModel.setAppStyle(com.example.antminerconnectiontest.theme.AppStyle.VIOLET)
-        assertEquals(
-            com.example.antminerconnectiontest.theme.AppStyle.VIOLET,
-            viewModel.uiState.value.appStyle
-        )
-    }
+    // ── v0.3.0: relay-only mode (the v0.3.0 appearance-style test
+    // was removed in v0.5.0 with the Violet style itself) ───────────
 
     @Test
     fun relayOnlyMode_defaultsOff_andToggles() {

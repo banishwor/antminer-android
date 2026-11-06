@@ -120,45 +120,32 @@ fun FleetListCard(
             }
         }
 
-        if (LocalGlassSettings.current.isGlass) {
-            // Grouped Sheets (v0.4.0): the fleet is ONE panel — rows
-            // separated by hairlines inset from the left edge, the
-            // selected row washed with the accent tint (mockup
-            // .fleetrow.selected).
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                shape = panelShape(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    rows.forEachIndexed { index, row ->
-                        FleetRowContent(
-                            row = row,
-                            isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
-                            nowMs = nowMs,
-                            onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
-                            onClick = { onRowClick(row) },
-                            grouped = true
+        // Grouped Sheets (v0.4.0): the fleet is ONE panel — rows
+        // separated by hairlines inset from the left edge, the
+        // selected row washed with the accent tint (mockup
+        // .fleetrow.selected).
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = panelShape(),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column {
+                rows.forEachIndexed { index, row ->
+                    FleetRowContent(
+                        row = row,
+                        isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
+                        nowMs = nowMs,
+                        onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
+                        onClick = { onRowClick(row) }
+                    )
+                    if (index < rows.lastIndex) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.padding(start = 16.dp)
                         )
-                        if (index < rows.lastIndex) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                                modifier = Modifier.padding(start = 16.dp)
-                            )
-                        }
                     }
                 }
-            }
-        } else {
-            rows.forEach { row ->
-                FleetRowItem(
-                    row = row,
-                    isActive = isRowActive(row, activeProfile, selectedRemoteMinerId),
-                    nowMs = nowMs,
-                    onEditNickname = onEditNickname?.let { edit -> { edit(row.entry) } },
-                    onClick = { onRowClick(row) }
-                )
             }
         }
     }
@@ -179,60 +166,21 @@ private fun isRowActive(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FleetRowItem(
+private fun FleetRowContent(
     row: FleetRow,
     isActive: Boolean,
     nowMs: Long,
     onEditNickname: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    // Liquid Glass (v0.3.0): rows get the translucent fill (from the
-    // glass colour scheme) + the specular edge highlight — but NO
-    // individual blur; live blur is scoped to the hero + tab bar.
-    // (Since v0.4.0 the Glass style renders the grouped single panel
-    // instead — see FleetListCard — so this per-row card is the
-    // Violet path.)
-    val glass = LocalGlassSettings.current
-
-    Surface(
-        // Same surface for cloud and local rows (user's explicit pick);
-        // the selected row is the only tinted one.
-        color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-        else MaterialTheme.colorScheme.surface,
-        shape = panelShape(),
-        border = if (glass.isGlass) BorderStroke(1.dp, glassEdgeBrush(glass.isDark)) else null,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        FleetRowContent(
-            row = row,
-            isActive = isActive,
-            nowMs = nowMs,
-            onEditNickname = onEditNickname,
-            onClick = onClick,
-            grouped = false
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun FleetRowContent(
-    row: FleetRow,
-    isActive: Boolean,
-    nowMs: Long,
-    onEditNickname: (() -> Unit)? = null,
-    onClick: () -> Unit,
-    grouped: Boolean
-) {
     val ui = FleetSorting.rowUi(row, nowMs)
     val dataFont = LocalDataFontFamily.current
-    val glass = LocalGlassSettings.current
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    if (grouped && isActive) {
+                    if (isActive) {
                         Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
                     } else {
                         Modifier
@@ -245,7 +193,7 @@ private fun FleetRowContent(
                         Modifier.clickable { onClick() }
                     }
                 )
-                .padding(horizontal = if (grouped) 16.dp else 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Status colour only: green online, red offline.
@@ -297,12 +245,10 @@ private fun FleetRowContent(
                 softWrap = false,
                 color = if (ui.isOnline) {
                     MaterialTheme.colorScheme.onSurface
-                } else if (glass.isGlass) {
+                } else {
                     // Grouped Sheets: the offline label is secondary
                     // grey — the word "Offline" carries the state.
                     MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.error
                 }
             )
             if (onEditNickname != null) {

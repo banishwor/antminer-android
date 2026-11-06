@@ -32,7 +32,9 @@ fun PoolsScreen(
     isRefreshing: Boolean,
     onManualRefresh: () -> Unit,
     dashboardError: String? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    /** Bottom dock clearance (v0.5.0): appended inside the scroll columns. */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val isOnline = data?.isOnline == true
     val pools = data?.pools ?: emptyList()
@@ -88,6 +90,8 @@ fun PoolsScreen(
                     onRetry = onRetry ?: onManualRefresh
                 )
             }
+            // Dock clearance (v0.5.0).
+            Spacer(modifier = Modifier.height(bottomInset))
         }
     } else {
     Column(
@@ -220,6 +224,9 @@ fun PoolsScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+        // Dock clearance (v0.5.0): the last pool card can scroll
+        // fully above the floating dock.
+        Spacer(modifier = Modifier.height(bottomInset))
     }
     }
 
@@ -254,22 +261,12 @@ private fun PoolCard(pool: MinerPool) {
     val isPrimary = pool.priority == 0
     val isAlive = pool.status.equals("Alive", ignoreCase = true)
     // Grouped Sheets (v0.4.0): an alive pool reads monochrome — grey
-    // dot, text-colour status word (the mockup's pool rows). Violet
-    // keeps its emerald alive treatment.
-    val groupedPools = LocalGlassSettings.current.isGlass
-    val aliveDotColor = if (groupedPools) {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    } else {
-        accentOk()
-    }
-    val aliveTextColor = if (groupedPools) {
-        MaterialTheme.colorScheme.onSurface
-    } else {
-        accentOk()
-    }
+    // dot, text-colour status word (the mockup's pool rows).
+    val aliveDotColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val aliveTextColor = MaterialTheme.colorScheme.onSurface
 
     Card(
-        shape = if (groupedPools) panelShape() else RoundedCornerShape(14.dp),
+        shape = panelShape(),
         colors = CardDefaults.cardColors(
             containerColor = if (isPrimary) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
         ),

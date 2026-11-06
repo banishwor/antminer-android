@@ -5,59 +5,44 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Status/accent colours, resolved per appearance style (v0.4.0).
+ * Status/accent colours (v0.4.0; single-style since v0.5.0).
  *
- * The Violet style keeps its historic constant palette (violet =
- * positive, amber = warning, ruby = error, pale violet = info). The
- * Grouped Sheets (Glass) style has exactly ONE accent — Apple blue —
+ * The Grouped Sheets design has exactly ONE accent — Apple blue —
  * and carries status by label + monochrome treatment instead, per the
  * approved V3 mockup: "ok" collapses to the blue accent, warnings and
  * errors collapse to the text colour (solid black / white), info and
  * cloud accents collapse to blue. Components read these helpers
- * instead of the raw constants so the same layout renders correctly
- * in both styles and no violet can leak into the V3 style.
+ * instead of raw constants so no stray hue can leak into the design.
  */
 
 /** Positive / primary accent: check marks, accepted shares, active states. */
 @Composable
-fun accentOk(): Color =
-    if (LocalGlassSettings.current.isGlass) MaterialTheme.colorScheme.primary else AntminerEmerald
+fun accentOk(): Color = MaterialTheme.colorScheme.primary
 
 /** Warning accent: slow fans, stale data, needs-password. Monochrome in V3. */
 @Composable
-fun accentWarn(): Color =
-    if (LocalGlassSettings.current.isGlass) MaterialTheme.colorScheme.onSurface else WarningAmber
+fun accentWarn(): Color = MaterialTheme.colorScheme.onSurface
 
 /** Error accent: failures, hot temperatures. Monochrome in V3 (labels carry it). */
 @Composable
-fun accentError(): Color =
-    if (LocalGlassSettings.current.isGlass) MaterialTheme.colorScheme.error else ErrorRuby
+fun accentError(): Color = MaterialTheme.colorScheme.error
 
 /** Info accent. Blue in V3. */
 @Composable
-fun accentInfo(): Color =
-    if (LocalGlassSettings.current.isGlass) MaterialTheme.colorScheme.primary else ElectricBlue
+fun accentInfo(): Color = MaterialTheme.colorScheme.primary
 
 /** Cloud / remote accent (the switcher's cloud rows, pool worker marks). Blue in V3. */
 @Composable
-fun accentCloud(): Color =
-    if (LocalGlassSettings.current.isGlass) MaterialTheme.colorScheme.primary else CyberCyan
+fun accentCloud(): Color = MaterialTheme.colorScheme.primary
 
 /** Secondary data accent (diff figures, secondary series). Neutral grey in V3. */
 @Composable
-fun accentData(): Color =
-    if (LocalGlassSettings.current.isGlass) MaterialTheme.colorScheme.onSurfaceVariant else CyberCyan
+fun accentData(): Color = MaterialTheme.colorScheme.onSurfaceVariant
 
 /**
  * Hashrate-chart series colours: the TOTAL line is drawn separately
- * with [accentOk]; these are the per-chain colours. Violet keeps its
- * violet-family series; V3 uses the mockup's greys under the blue
- * total.
+ * with [accentOk]; these are the per-chain colours — the mockup's
+ * greys under the blue total.
  */
 @Composable
-fun chainSeriesColors(): List<Color> =
-    if (LocalGlassSettings.current.isGlass) {
-        GroupedSheetsSpec.ChartChainGreys
-    } else {
-        listOf(AntminerEmerald, CyberCyan, ElectricBlue, WarningAmber)
-    }
+fun chainSeriesColors(): List<Color> = GroupedSheetsSpec.ChartChainGreys

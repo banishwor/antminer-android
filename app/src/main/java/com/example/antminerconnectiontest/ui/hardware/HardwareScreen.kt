@@ -32,7 +32,9 @@ fun HardwareScreen(
     isRefreshing: Boolean,
     onManualRefresh: () -> Unit,
     dashboardError: String? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    /** Bottom dock clearance (v0.5.0): appended inside the scroll column. */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -64,6 +66,9 @@ fun HardwareScreen(
                     onRetry = onRetry ?: onManualRefresh
                 )
             }
+            // Dock clearance (v0.5.0): the last section can scroll
+            // fully above the floating dock.
+            Spacer(modifier = Modifier.height(bottomInset))
         }
     }
 }

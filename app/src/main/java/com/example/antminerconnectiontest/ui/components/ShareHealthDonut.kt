@@ -51,18 +51,12 @@ fun ShareHealthDonut(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Arc colours resolve per style: Violet emerald/ruby over
-            // a slate track; Grouped Sheets (v0.4.0) follows the
+            // Arc colours: Grouped Sheets (v0.4.0) follows the
             // mockup donut — blue accepted, #55555C rejected, pale
             // grey track.
-            val isGrouped = LocalGlassSettings.current.isGlass
             val acceptedColor = accentOk()
-            val rejectedColor = if (isGrouped) GroupedSheetsSpec.DonutRejected else ErrorRuby
-            val trackColor = if (isGrouped) {
-                GroupedSheetsSpec.DonutStale
-            } else {
-                Color(0xFF1E293B).copy(alpha = 0.5f)
-            }
+            val rejectedColor = GroupedSheetsSpec.DonutRejected
+            val trackColor = GroupedSheetsSpec.DonutStale
 
             // Left: Donut Chart with Center Rate
             Box(

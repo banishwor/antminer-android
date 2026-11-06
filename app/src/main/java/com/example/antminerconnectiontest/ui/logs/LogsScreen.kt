@@ -61,7 +61,13 @@ fun LogsScreen(
     onStartDailyAnalysis: (List<String>) -> Unit = {},
     onOpenAnalysisDetail: (DailyMinerAnalysis) -> Unit = {},
     onCloseAnalysisDetail: () -> Unit = {},
-    onRefreshDailyDates: () -> Unit = {}
+    onRefreshDailyDates: () -> Unit = {},
+    /**
+     * Bottom dock clearance (v0.5.0): added to the root column's
+     * bottom padding so the console card / analysis list ends above
+     * the floating dock instead of behind it.
+     */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val context = LocalContext.current
     val activeLogText = if (selectedTab == LogsTab.CURRENT) currentLogText else historyLogText
@@ -135,7 +141,7 @@ fun LogsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp + bottomInset),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Top Header Row
@@ -286,15 +292,9 @@ fun LogsScreen(
             Card(
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (LocalGlassSettings.current.isGlass) {
-                    // The mockup's console is ALWAYS near-black with
-                    // light text, in light theme too.
-                    GroupedSheetsSpec.ConsoleBackground
-                } else if (MaterialTheme.colorScheme.background == DarkBackground) {
-                    Color(0xFF05080E)
-                } else {
-                    Color(0xFF0F172A)
-                }
+                // The mockup's console is ALWAYS near-black with
+                // light text, in light theme too.
+                containerColor = GroupedSheetsSpec.ConsoleBackground
             ),
             border = CardDefaults.outlinedCardBorder().copy(
                 brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outline)
@@ -354,11 +354,7 @@ fun LogsScreen(
                             ) {
                                 Text(
                                     "Retry",
-                                    color = if (LocalGlassSettings.current.isGlass) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        Color(0xFF003919)
-                                    },
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -399,11 +395,7 @@ fun LogsScreen(
                                 itemsIndexed(visibleLogLines) { _, line ->
                                     Text(
                                         text = line.ifEmpty { " " },
-                                        color = if (LocalGlassSettings.current.isGlass) {
-                                            GroupedSheetsSpec.ConsoleText
-                                        } else {
-                                            Color(0xFFE2E8F0)
-                                        },
+                                        color = GroupedSheetsSpec.ConsoleText,
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,
                                         lineHeight = 16.sp
@@ -433,11 +425,7 @@ fun LogsScreen(
                         },
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = accentOk(),
-                            contentColor = if (LocalGlassSettings.current.isGlass) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                Color(0xFF003919)
-                            }
+                            contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
                         shape = RoundedCornerShape(20.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -472,14 +460,12 @@ private fun LogTabButton(
     // Grouped Sheets (v0.4.0): the mockup's segmented control — the
     // selected segment is the raised pill (white / #636366) with
     // text-colour label; unselected segments are plain secondary
-    // text on the grey track. Violet keeps its accent-filled tab.
+    // text on the grey track.
     val glassSettings = LocalGlassSettings.current
-    val grouped = glassSettings.isGlass
     Surface(
         color = when {
             !isSelected -> Color.Transparent
-            grouped -> GroupedSheetsSpec.segmentedSelected(glassSettings.isDark)
-            else -> MaterialTheme.colorScheme.primary
+            else -> GroupedSheetsSpec.segmentedSelected(glassSettings.isDark)
         },
         shape = RoundedCornerShape(8.dp),
         modifier = modifier.clickable { onClick() }
@@ -493,7 +479,7 @@ private fun LogTabButton(
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (isSelected) {
-                    if (grouped) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
+                    MaterialTheme.colorScheme.onSurface
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 }

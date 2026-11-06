@@ -151,7 +151,7 @@ private fun MicroMinerBlade(
                 modifier = Modifier
                     .size(6.dp)
                     .clip(CircleShape)
-                    .background(if (isActive) AntminerEmerald else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                    .background(if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
             )
 
             // Unit Label

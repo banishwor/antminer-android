@@ -31,11 +31,9 @@ import com.example.antminerconnectiontest.theme.GroupedSheetsSpec
 import com.example.antminerconnectiontest.theme.LocalGlassSettings
 
 /**
- * iOS-style controls for the Grouped Sheets (Glass) style, v0.4.0 —
+ * iOS-style controls for the Grouped Sheets design, v0.4.0 —
  * drawn from [GroupedSheetsSpec] exactly as the approved V3 mockup
- * draws them (.switch / .seg in the mockup CSS). The Violet style
- * keeps its Material controls; these are used only where a screen
- * branches on the Glass style.
+ * draws them (.switch / .seg in the mockup CSS).
  */
 
 /**

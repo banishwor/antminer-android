@@ -12,13 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.antminerconnectiontest.theme.AppStyle
 import com.example.antminerconnectiontest.theme.LocalGlassSettings
-import com.example.antminerconnectiontest.theme.WarningAmber
 import com.example.antminerconnectiontest.theme.groupedSheetsColorScheme
 import com.example.antminerconnectiontest.theme.panelBorder
 import com.example.antminerconnectiontest.theme.panelShape
-import com.example.antminerconnectiontest.theme.solidVioletColorScheme
 import kotlinx.coroutines.delay
 
 /** Upload state of one local miner, as the relay-only screen shows it. */
@@ -46,12 +43,9 @@ data class RelayMinerLine(
  * the whole app — no tabs, no fleet list, no settings — because the
  * phone's job at a miner site is to be left alone and read quickly.
  *
- * v0.4.0: the screen adopts the selected style's OPAQUE design —
- * with the Glass style selected it renders the V3 grouped design
- * (grouped base, panels, blue accent) via
- * [groupedSheetsColorScheme]; with Violet, the solid Violet scheme.
- * Either way: no glass, no blur, nothing decorative — the fully
- * opaque form only.
+ * v0.4.0: the screen renders the V3 grouped design (grouped base,
+ * panels, blue accent) via [groupedSheetsColorScheme] in fully
+ * opaque form: no glass, no blur, nothing decorative.
  *
  * Everything it shows is the relay's actual state: who it relays as,
  * the local miners and their upload state, the last successful upload
@@ -112,18 +106,13 @@ fun RelayOnlyScreen(
     )
     val isRelaying = visible.statusWord == "Relaying"
 
-    // Fully opaque, full contrast: the selected style's solid
-    // scheme for the resolved darkness (typography and shapes are
-    // inherited from the surrounding theme) over the screen's own
-    // opaque background. Grouped design when Glass is selected,
-    // solid Violet otherwise — never translucent, never blurred.
+    // Fully opaque, full contrast: the grouped scheme for the
+    // resolved darkness (typography and shapes are inherited from
+    // the surrounding theme) over the screen's own opaque
+    // background — never translucent, never blurred.
     val glassSettings = LocalGlassSettings.current
     val isDark = glassSettings.isDark
-    val relayScheme = if (glassSettings.style == AppStyle.LIQUID_GLASS) {
-        groupedSheetsColorScheme(isDark)
-    } else {
-        solidVioletColorScheme(isDark)
-    }
+    val relayScheme = groupedSheetsColorScheme(isDark)
     MaterialTheme(colorScheme = relayScheme) {
         Surface(
             color = MaterialTheme.colorScheme.background,
@@ -257,16 +246,11 @@ fun RelayOnlyScreen(
                                     RelayMinerState.OFFLINE ->
                                         MaterialTheme.colorScheme.onSurfaceVariant to "OFFLINE"
                                     RelayMinerState.WAITING ->
-                                        // Amber in Violet; the
-                                        // text colour (tertiary slot)
-                                        // in the monochrome grouped
-                                        // design — "WAITING" is the
-                                        // meaning either way.
-                                        (if (glassSettings.style == AppStyle.LIQUID_GLASS) {
-                                            MaterialTheme.colorScheme.tertiary
-                                        } else {
-                                            WarningAmber
-                                        }) to "WAITING"
+                                        // The text colour (tertiary
+                                        // slot) in the monochrome
+                                        // grouped design — "WAITING"
+                                        // is the meaning.
+                                        MaterialTheme.colorScheme.tertiary to "WAITING"
                                 }
                                 Surface(
                                     color = chipColor.copy(alpha = 0.14f),

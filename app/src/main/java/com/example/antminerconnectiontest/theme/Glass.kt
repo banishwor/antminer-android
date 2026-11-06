@@ -18,18 +18,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 /**
- * Appearance style (v0.3.0): the app's look, chosen in Settings →
- * Appearance → Style and persisted like the theme mode. [VIOLET] is
- * the default solid theme; [LIQUID_GLASS] is the opt-in glass look —
- * since v0.4.0 that is the V3 "Grouped Sheets" design (see
- * [GroupedSheetsSpec]): flat grouped panels, Apple-blue accent, and
- * real glass only in the floating dock. The style never changes
- * layout, content or status-label semantics — only the material.
+ * The app's ONE appearance (v0.5.0): the V3 "Grouped Sheets" design
+ * (see [GroupedSheetsSpec]) — flat grouped panels, Apple-blue accent,
+ * and real glass only in the floating dock. The Violet style that
+ * shipped alongside it through v0.4.0 was removed in v0.5.0 at the
+ * user's direction; there is no style choice anymore, only the
+ * Light / Dark / System theme mode.
  */
-enum class AppStyle {
-    VIOLET,
-    LIQUID_GLASS
-}
 
 /**
  * How much real blur a device can afford. [FULL] = live-rendered blur
@@ -72,14 +67,12 @@ fun rememberGlassTier(): GlassTier {
 
 /** The resolved glass settings for the current composition. */
 data class GlassSettings(
-    val style: AppStyle = AppStyle.VIOLET,
     val tier: GlassTier = GlassTier.LITE,
     /** The resolved dark/light of the current theme (edges differ). */
     val isDark: Boolean = false
 ) {
-    val isGlass: Boolean get() = style == AppStyle.LIQUID_GLASS
-    /** Live blur allowed (style on, device capable). */
-    val liveBlur: Boolean get() = isGlass && tier == GlassTier.FULL
+    /** Live blur allowed (device capable). */
+    val liveBlur: Boolean get() = tier == GlassTier.FULL
 }
 
 val LocalGlassSettings = staticCompositionLocalOf { GlassSettings() }
@@ -120,7 +113,7 @@ fun GlassWallpaper(isDark: Boolean, tier: GlassTier, modifier: Modifier = Modifi
  * panel (hero, tab bar): a copy of the wallpaper, blurred, clipped by
  * the parent's shape — it reads as the panel frosting whatever is
  * behind it. Renders nothing on LITE (the translucent fill + edge
- * carries the look there) and nothing when glass is off.
+ * carries the look there).
  *
  * SIZING INVARIANT (v0.3.2 bugfix): a backdrop must NEVER size its
  * parent. This composable is a [BoxScope] member and sizes itself

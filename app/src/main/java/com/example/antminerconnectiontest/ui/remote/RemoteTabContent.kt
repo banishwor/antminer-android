@@ -31,12 +31,16 @@ import com.example.antminerconnectiontest.ui.components.UnavailableSection
  */
 
 @Composable
-fun RemoteHardwareTab(detail: MinerDetailUi?) {
+fun RemoteHardwareTab(
+    detail: MinerDetailUi?,
+    /** Bottom dock clearance (v0.5.0): added to the scroll column's bottom padding. */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
+) {
     if (detail == null) {
         SelectMinerPlaceholder(tabName = "Hardware")
         return
     }
-    RemoteTabColumn {
+    RemoteTabColumn(bottomInset = bottomInset) {
         MinerHardwareSections(detail)
         OnLocationNote(
             text = "Full hardware control for ${detail.displayName} is available on location — connect on the miner's Wi-Fi."
@@ -45,12 +49,16 @@ fun RemoteHardwareTab(detail: MinerDetailUi?) {
 }
 
 @Composable
-fun RemotePoolsTab(detail: MinerDetailUi?) {
+fun RemotePoolsTab(
+    detail: MinerDetailUi?,
+    /** Bottom dock clearance (v0.5.0): added to the scroll column's bottom padding. */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
+) {
     if (detail == null) {
         SelectMinerPlaceholder(tabName = "Pools")
         return
     }
-    RemoteTabColumn {
+    RemoteTabColumn(bottomInset = bottomInset) {
         // Only the PRIMARY pool is uploaded to the cloud — shown in
         // full. Backup pools are never invented here.
         MinerDetailPoolSection(detail)
@@ -61,12 +69,16 @@ fun RemotePoolsTab(detail: MinerDetailUi?) {
 }
 
 @Composable
-fun RemoteLogsTab(detail: MinerDetailUi?) {
+fun RemoteLogsTab(
+    detail: MinerDetailUi?,
+    /** Bottom dock clearance (v0.5.0): added to the scroll column's bottom padding. */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp
+) {
     if (detail == null) {
         SelectMinerPlaceholder(tabName = "Logs")
         return
     }
-    RemoteTabColumn {
+    RemoteTabColumn(bottomInset = bottomInset) {
         // Log text is never uploaded — the honest on-location panel,
         // naming the selected machine.
         UnavailableSection("Logs", "Miner event and kernel logs")
@@ -100,13 +112,18 @@ private fun SelectMinerPlaceholder(tabName: String) {
 
 @Composable
 private fun RemoteTabColumn(
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .verticalScroll(rememberScrollState()),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+            .verticalScroll(rememberScrollState())
+            // Dock clearance (v0.5.0): padding INSIDE the scrollable
+            // area (after verticalScroll) so the last rows can scroll
+            // fully above the floating dock.
+            .padding(bottom = bottomInset),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content
     )

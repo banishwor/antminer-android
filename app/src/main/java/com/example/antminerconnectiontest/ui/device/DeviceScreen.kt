@@ -32,11 +32,10 @@ import com.example.antminerconnectiontest.ui.components.IosSwitch
 import com.example.antminerconnectiontest.ui.components.SourceChip
 
 /**
- * The Device tab, redesigned as "Option C — Minimal List" in v0.2.3
- * (user-picked from the mockups): no cards — one flat list with
- * hairline dividers, generous rows and outlined icon chips, in the
- * Violet theme (Light + AMOLED Dark). Same functions as before, new
- * presentation:
+ * The Device tab: born as "Option C — Minimal List" in v0.2.3 and
+ * restyled to the V3 Grouped Sheets Settings in v0.4.0 (group labels,
+ * panels, iOS switches and segmented controls) — the app's only
+ * design since the Violet style was removed in v0.5.0:
  *
  *   header (title + version pill + refresh)
  *   → selected-machine block (when the selection isn't the active
@@ -86,11 +85,8 @@ fun DeviceScreen(
     onCheckForUpdates: () -> Unit = {},
     onAddNewMiner: () -> Unit,
     onDisconnect: () -> Unit,
-    // Appearance style (v0.3.0): Violet (default) or Liquid Glass,
-    // plus this device's glass capability tier for the helper line.
-    appStyle: AppStyle = AppStyle.VIOLET,
-    glassTier: GlassTier = GlassTier.LITE,
-    onSetAppStyle: (AppStyle) -> Unit = {},
+    /** Bottom dock clearance (v0.5.0): appended inside the scroll column. */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
     // Relay-only mode (v0.3.0): the switch that swaps the whole app
     // for the relay status screen on a phone left at a miner site.
     relayOnlyMode: Boolean = false,
@@ -122,12 +118,9 @@ fun DeviceScreen(
     // leaving the tab resets it — the expanded state is never kept.
     var isCloudExpanded by remember { mutableStateOf(false) }
 
-    // Grouped Sheets (v0.4.0): when the Glass style is selected this
-    // screen renders the V3 mockup's Settings — group labels, panels,
-    // iOS switches and segmented controls. The Violet style keeps the
-    // Option C flat list exactly as it was.
-    val grouped = LocalGlassSettings.current.isGlass
-
+    // Grouped Sheets (v0.4.0): this screen renders the V3 mockup's
+    // Settings — group labels, panels, iOS switches and segmented
+    // controls.
     val context = androidx.compose.ui.platform.LocalContext.current
     val installedVersion = remember {
         try {
@@ -163,22 +156,14 @@ fun DeviceScreen(
                 )
             }
             Surface(
-                color = if (grouped) {
-                    MaterialTheme.colorScheme.surfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.primaryContainer
-                },
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(999.dp)
             ) {
                 Text(
                     text = "v$installedVersion",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (grouped) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    },
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
             }
@@ -205,13 +190,7 @@ fun DeviceScreen(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (grouped) {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            } else {
-                                MaterialTheme.colorScheme.primaryContainer
-                            }
-                        )
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -219,11 +198,7 @@ fun DeviceScreen(
                         text = selectedMachineName.trim().firstOrNull()?.uppercase() ?: "?",
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
-                        color = if (grouped) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Spacer(modifier = Modifier.width(11.dp))
@@ -277,11 +252,7 @@ fun DeviceScreen(
             DeviceListRow(
                 icon = Icons.Default.Add,
                 title = "Add a miner",
-                subtitle = if (grouped) {
-                    "Enter an IP — on the miner's Wi-Fi, known miners connect by themselves"
-                } else {
-                    "Scan or enter an IP — on the miner's Wi-Fi, known miners connect by themselves"
-                },
+                subtitle = "Enter an IP — on the miner's Wi-Fi, known miners connect by themselves",
                 onClick = onAddNewMiner,
                 trailing = {
                     Icon(
@@ -292,10 +263,6 @@ fun DeviceScreen(
                 }
             )
         }
-        if (!grouped) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        }
-
         val profilesToShow = if (savedProfiles.isEmpty()) listOfNotNull(profile) else savedProfiles
         if (profilesToShow.isEmpty()) {
             Text(
@@ -305,17 +272,7 @@ fun DeviceScreen(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp)
             )
         } else {
-            if (!grouped) {
-                Text(
-                    text = "Saved on this phone (${profilesToShow.size})",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp)
-                )
-            } else {
-                Spacer(modifier = Modifier.height(10.dp))
-            }
+            Spacer(modifier = Modifier.height(10.dp))
             SettingsPanel {
             profilesToShow.forEachIndexed { index, item ->
                 val isActive = item.id == profile?.id
@@ -472,9 +429,7 @@ fun DeviceScreen(
                 )
             }
         }
-        if (grouped) {
-            SettingsRowDivider()
-        }
+        SettingsRowDivider()
         // Relay only (v0.3.0): its own compact row UNDER the Relay
         // row, visible WITHOUT expanding the section — one switch +
         // one helper line. Flipping it swaps the whole app for the
@@ -504,14 +459,6 @@ fun DeviceScreen(
             SettingsSwitch(
                 checked = relayOnlyMode,
                 onCheckedChange = onSetRelayOnlyMode
-            )
-        }
-        if (!grouped) {
-            Text(
-                text = "Finish setup first — relay name and miners — then flip this on and leave the phone at the site.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
             )
         }
         AnimatedVisibility(visible = isCloudExpanded) {
@@ -611,89 +558,28 @@ fun DeviceScreen(
             }
         }
         }
-        if (grouped) {
-            // The mockup's state-aware note under the relay panel.
-            Text(
-                text = when {
-                    !relayEnabled ->
-                        "Relay is off — nothing is uploaded from this phone. Watching remote miners still works."
-                    cloudConfig.userName.isBlank() ->
-                        "Set your relay name above to start uploading."
-                    else ->
-                        "Ready — relaying as ${cloudConfig.userName} · " +
-                            "${profilesToShow.size} local ${if (profilesToShow.size == 1) "miner" else "miners"} uploading."
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp)
-            )
-        } else {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        }
+        // The mockup's state-aware note under the relay panel.
+        Text(
+            text = when {
+                !relayEnabled ->
+                    "Relay is off — nothing is uploaded from this phone. Watching remote miners still works."
+                cloudConfig.userName.isBlank() ->
+                    "Set your relay name above to start uploading."
+                else ->
+                    "Ready — relaying as ${cloudConfig.userName} · " +
+                        "${profilesToShow.size} local ${if (profilesToShow.size == 1) "miner" else "miners"} uploading."
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+        )
 
         // ── Appearance ───────────────────────────────────────────────
+        // v0.5.0: no Style row anymore — Grouped Sheets is the only
+        // design (the Violet style was removed). The Theme mode
+        // picker below is unchanged: Dark / Light / System.
         DeviceSectionLabel("Appearance")
         SettingsPanel {
-        // Style (v0.3.0): ONE compact row — label + two-option
-        // selector — per the user's instruction that the style change
-        // must not take much vertical space. The Dark/Light/System
-        // mode picker below stays exactly as it was and applies to
-        // whichever style is selected.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DeviceIconChip(icon = Icons.Default.AutoAwesome)
-            Spacer(modifier = Modifier.width(11.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Style",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = when (appStyle) {
-                        AppStyle.VIOLET -> "Violet — the solid theme"
-                        AppStyle.LIQUID_GLASS ->
-                            if (glassTier == GlassTier.LITE) {
-                                "Grouped sheets — flat panels, blue accent · lighter dock on this phone"
-                            } else {
-                                "Grouped sheets — flat panels, Apple blue accent, glass dock"
-                            }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (grouped) {
-                IosSegmentedControl(
-                    options = listOf("Violet", "Glass"),
-                    selectedIndex = if (appStyle == AppStyle.VIOLET) 0 else 1,
-                    onSelect = { index ->
-                        onSetAppStyle(if (index == 0) AppStyle.VIOLET else AppStyle.LIQUID_GLASS)
-                    },
-                    modifier = Modifier.width(158.dp)
-                )
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    ThemeOptionButton(
-                        label = "Violet",
-                        icon = Icons.Default.Palette,
-                        isSelected = appStyle == AppStyle.VIOLET,
-                        onClick = { onSetAppStyle(AppStyle.VIOLET) }
-                    )
-                    ThemeOptionButton(
-                        label = "Glass",
-                        icon = Icons.Default.BlurOn,
-                        isSelected = appStyle == AppStyle.LIQUID_GLASS,
-                        onClick = { onSetAppStyle(AppStyle.LIQUID_GLASS) }
-                    )
-                }
-            }
-        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -710,70 +596,34 @@ fun DeviceScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "${if (appStyle == AppStyle.LIQUID_GLASS) "Liquid Glass" else "Violet"} · AMOLED black in Dark",
+                    text = "Grouped Sheets · AMOLED black in Dark",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-        if (grouped) {
-            IosSegmentedControl(
-                options = listOf("Dark", "Light", "System"),
-                selectedIndex = when (themeMode) {
-                    ThemeMode.DARK -> 0
-                    ThemeMode.LIGHT -> 1
-                    ThemeMode.SYSTEM -> 2
-                },
-                onSelect = { index ->
-                    onSetThemeMode(
-                        when (index) {
-                            0 -> ThemeMode.DARK
-                            1 -> ThemeMode.LIGHT
-                            else -> ThemeMode.SYSTEM
-                        }
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 6.dp)
-            )
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                ThemeOptionButton(
-                    label = "Dark",
-                    icon = Icons.Default.DarkMode,
-                    isSelected = themeMode == ThemeMode.DARK,
-                    onClick = { onSetThemeMode(ThemeMode.DARK) },
-                    modifier = Modifier.weight(1f)
+        IosSegmentedControl(
+            options = listOf("Dark", "Light", "System"),
+            selectedIndex = when (themeMode) {
+                ThemeMode.DARK -> 0
+                ThemeMode.LIGHT -> 1
+                ThemeMode.SYSTEM -> 2
+            },
+            onSelect = { index ->
+                onSetThemeMode(
+                    when (index) {
+                        0 -> ThemeMode.DARK
+                        1 -> ThemeMode.LIGHT
+                        else -> ThemeMode.SYSTEM
+                    }
                 )
-                ThemeOptionButton(
-                    label = "Light",
-                    icon = Icons.Default.LightMode,
-                    isSelected = themeMode == ThemeMode.LIGHT,
-                    onClick = { onSetThemeMode(ThemeMode.LIGHT) },
-                    modifier = Modifier.weight(1f)
-                )
-                ThemeOptionButton(
-                    label = "System",
-                    icon = Icons.Default.SettingsBrightness,
-                    isSelected = themeMode == ThemeMode.SYSTEM,
-                    onClick = { onSetThemeMode(ThemeMode.SYSTEM) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+        )
         }
-        }
-        if (grouped) {
-            Spacer(modifier = Modifier.height(2.dp))
-        } else {
-            Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        }
+        Spacer(modifier = Modifier.height(2.dp))
 
         // ── App ──────────────────────────────────────────────────────
         DeviceSectionLabel("App")
@@ -888,16 +738,10 @@ fun DeviceScreen(
                 onClick = onDisconnect,
                 shape = panelShape(),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = if (grouped) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    }
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ),
-                // 1 dp outline in both styles — that IS the M3
-                // outlined-button default border for an enabled
-                // button, spelled out so the grouped branch and the
-                // Violet branch share one expression.
+                // 1 dp outline — that IS the M3 outlined-button
+                // default border for an enabled button, spelled out.
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -910,6 +754,9 @@ fun DeviceScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+        // Dock clearance (v0.5.0): the last rows can scroll fully
+        // above the floating dock.
+        Spacer(modifier = Modifier.height(bottomInset))
     }
 
     // Edit Nickname & Location Dialog
@@ -967,110 +814,65 @@ fun DeviceScreen(
 }
 
 /**
- * A grouped panel wrapper (v0.4.0): in the Glass style, a Surface in
- * the panel colour with the hairline border and the panel radius,
- * content inset 12 dp (16 dp for the dense info lists); in the
- * Violet style, a plain Column — the Option C flat list renders
- * exactly as before.
+ * A grouped panel wrapper (v0.4.0): a Surface in the panel colour
+ * with the hairline border and the panel radius, content inset
+ * 12 dp (16 dp for the dense info lists).
  */
 @Composable
 private fun SettingsPanel(
     contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    if (LocalGlassSettings.current.isGlass) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = panelShape(),
-            border = panelBorder(),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(contentPadding), content = content)
-        }
-    } else {
-        Column(content = content)
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = panelShape(),
+        border = panelBorder(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(contentPadding), content = content)
     }
 }
 
-/** Divider between rows: inset hairline in a Glass panel, the plain
- *  outline divider in the Violet flat list. */
+/** Divider between rows: the inset hairline of a grouped panel. */
 @Composable
 private fun SettingsRowDivider() {
-    if (LocalGlassSettings.current.isGlass) {
-        HorizontalDivider(
-            color = MaterialTheme.colorScheme.outlineVariant,
-            modifier = Modifier.padding(start = 16.dp)
-        )
-    } else {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-    }
-}
-
-/** The settings switch: iOS pill in the Glass style, Material Switch
- *  in the Violet style. Same checked state and callback either way. */
-@Composable
-private fun SettingsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    if (LocalGlassSettings.current.isGlass) {
-        IosSwitch(checked = checked, onCheckedChange = onCheckedChange)
-    } else {
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-/** Option C section label: small, uppercase, letterspaced, muted.
- *  Grouped Sheets (v0.4.0): the mockup's group label — spec size and
- *  tracking, normal weight, indented to the panel content line. */
-@Composable
-private fun DeviceSectionLabel(text: String) {
-    if (LocalGlassSettings.current.isGlass) {
-        Text(
-            text = text.uppercase(),
-            fontSize = GroupedSheetsSpec.GroupLabelTextSize,
-            letterSpacing = GroupedSheetsSpec.GroupLabelLetterSpacing,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 6.dp)
-        )
-        return
-    }
-    Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.2.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 4.dp)
+    HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant,
+        modifier = Modifier.padding(start = 16.dp)
     )
 }
 
-/** Option C icon chip: transparent fill, hairline border, 34 dp. */
+/** The settings switch: the iOS pill. */
+@Composable
+private fun SettingsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    IosSwitch(checked = checked, onCheckedChange = onCheckedChange)
+}
+
+/** Section label: the mockup's group label — spec size and
+ *  tracking, normal weight, indented to the panel content line. */
+@Composable
+private fun DeviceSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        fontSize = GroupedSheetsSpec.GroupLabelTextSize,
+        letterSpacing = GroupedSheetsSpec.GroupLabelLetterSpacing,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 6.dp)
+    )
+}
+
+/** Row icon (Grouped Sheets): a plain glyph, no chip box. */
 @Composable
 private fun DeviceIconChip(
     icon: ImageVector,
     tint: Color = MaterialTheme.colorScheme.primary
 ) {
-    if (LocalGlassSettings.current.isGlass) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(20.dp)
-        )
-        return
-    }
-    Box(
-        modifier = Modifier
-            .size(34.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(18.dp)
-        )
-    }
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = tint,
+        modifier = Modifier.size(20.dp)
+    )
 }
 
 /** Option C flat list row: icon chip + title/subtitle + trailing slot. */
@@ -1114,53 +916,7 @@ private fun DeviceListRow(
 
 @Composable
 private fun DeviceInfoDivider() {
-    HorizontalDivider(
-        color = if (LocalGlassSettings.current.isGlass) {
-            MaterialTheme.colorScheme.outlineVariant
-        } else {
-            MaterialTheme.colorScheme.outline
-        }
-    )
-}
-
-/**
- * Flat theme option (v0.2.4): no solid fill — the selected option is
- * a light accent tint with accent text; unselected options are plain
- * muted text on the page background.
- */
-@Composable
-private fun ThemeOptionButton(
-    label: String,
-    icon: ImageVector,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier.clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier.padding(vertical = 7.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(15.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable

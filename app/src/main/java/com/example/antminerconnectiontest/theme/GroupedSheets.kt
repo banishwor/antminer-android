@@ -10,10 +10,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The V3 "Grouped Sheets" design tokens (v0.4.0) — the visual design
- * of the Liquid Glass appearance style from the user-approved
- * whole-app mockup (~/workspace/your_files/antminer-app-v3-mockup.html,
- * itself the Round-12 "V3 Grouped Sheets" final).
+ * The V3 "Grouped Sheets" design tokens (v0.4.0) — the app's ONE
+ * visual design since v0.5.0, from the user-approved whole-app mockup
+ * (~/workspace/your_files/antminer-app-v3-mockup.html, itself the
+ * Round-12 "V3 Grouped Sheets" final).
  *
  * The discipline is the design:
  *  - a flat grouped base (#F2F2F7 light / true #000000 dark) with
@@ -126,27 +126,15 @@ object GroupedSheetsSpec {
 
 /**
  * The corner shape of a content panel: [GroupedSheetsSpec.PanelRadius]
- * in the Grouped Sheets (Glass) style, the long-standing 16 dp card
- * radius in the Violet style — so restyling the Glass appearance can
- * never change a Violet corner.
+ * everywhere.
  */
 @Composable
-fun panelShape(): Shape =
-    if (LocalGlassSettings.current.isGlass) {
-        RoundedCornerShape(GroupedSheetsSpec.PanelRadius)
-    } else {
-        RoundedCornerShape(16.dp)
-    }
+fun panelShape(): Shape = RoundedCornerShape(GroupedSheetsSpec.PanelRadius)
 
 /**
  * The hairline border of a grouped panel (V3 mockup: panels are
- * defined by a 1 dp hairline in the outline tone). Null in the Violet
- * style, whose cards carry no border — matching their current look.
+ * defined by a 1 dp hairline in the outline tone).
  */
 @Composable
 fun panelBorder(): BorderStroke? =
-    if (LocalGlassSettings.current.isGlass) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    } else {
-        null
-    }
+    BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
