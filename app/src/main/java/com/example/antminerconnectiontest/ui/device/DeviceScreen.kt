@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.TabDataSource
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.IosSegmentedControl
 import com.example.antminerconnectiontest.ui.components.IosSwitch
@@ -102,7 +103,12 @@ fun DeviceScreen(
     selectedMachineFirmware: String = "",
     selectedMachineSerial: String = "",
     selectedMachineIp: String = "",
-    selectedMachineIsRemote: Boolean = false
+    selectedMachineIsRemote: Boolean = false,
+    // The active profile machine's REAL data source (v0.5.1, see
+    // TabSource): drives the saved-miners list chip. LIVE only while
+    // its live session is online, CLOUD when only its cloud snapshot
+    // backs it, LOCAL when it has neither (no chip is rendered then).
+    activeProfileSource: TabDataSource = TabDataSource.LOCAL
 ) {
     val sys = data?.systemInfo
     var isMacMasked by remember { mutableStateOf(false) }
@@ -324,18 +330,18 @@ fun DeviceScreen(
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     if (isActive) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = "ACTIVE",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 10.sp
-                            )
+                        // v0.5.1: the chip names the machine's REAL
+                        // source — LIVE only while its live session is
+                        // actually online, REMOTE when this phone holds
+                        // only its cloud snapshot. With neither, no
+                        // chip renders: claiming "ACTIVE" for a
+                        // connection that does not exist was the bug.
+                        // (The row stays recognisable as the selected
+                        // profile by its blue icon + host, as before.)
+                        when (activeProfileSource) {
+                            TabDataSource.LIVE -> SavedMinerSourceChip("LIVE")
+                            TabDataSource.CLOUD -> SavedMinerSourceChip("REMOTE")
+                            TabDataSource.LOCAL -> Unit
                         }
                     } else {
                         TextButton(
@@ -846,6 +852,28 @@ private fun SettingsRowDivider() {
 @Composable
 private fun SettingsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     IosSwitch(checked = checked, onCheckedChange = onCheckedChange)
+}
+
+/**
+ * The saved-miners list chip for the selected profile's row (v0.5.1):
+ * the small primary-tinted badge the pre-fix row always rendered as
+ * "ACTIVE" — now it only ever says LIVE or REMOTE (see the row).
+ */
+@Composable
+private fun SavedMinerSourceChip(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Text(
+            text = text,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            fontSize = 10.sp
+        )
+    }
 }
 
 /** Section label: the mockup's group label — spec size and

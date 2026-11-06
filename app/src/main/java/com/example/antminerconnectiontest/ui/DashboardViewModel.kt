@@ -1661,7 +1661,10 @@ class DashboardViewModel(
         val isStale = data == null ||
             _uiState.value.dashboardError != null ||
             System.currentTimeMillis() - data.lastUpdated > 30_000L
-        if (isStale) {
+        // v0.5.1: while the viewed machine is shown from its cloud
+        // snapshot and the phone is off Wi-Fi, the local dial cannot
+        // succeed — the cloud re-sync above is the whole refresh.
+        if (isStale && !snapshotShownOffWifi()) {
             viewModelScope.launch {
                 repository.refreshDashboardData()
             }
@@ -2060,12 +2063,55 @@ class DashboardViewModel(
         }
     }
 
+    /**
+     * The tab-source decision for the machine the tabs are about
+     * (v0.5.1, see [TabSource]) — resolved from the merged fleet, so a
+     * machine selected through its saved local profile is recognised
+     * as the same machine as its cloud snapshot.
+     */
+    private fun currentTabSource(): TabDataSource {
+        val state = _uiState.value
+        val entries = mergedMiners.value
+        val entry = if (state.selectedRemoteMiner != null) {
+            entries.firstOrNull { it.remoteSnapshot?.id == state.selectedRemoteMiner?.id }
+        } else {
+            state.activeProfile?.let { profile ->
+                entries.firstOrNull { it.localProfile?.id == profile.id }
+            }
+        }
+        val active = state.activeProfile
+        val liveOnline = active != null &&
+            entry?.localProfile?.id == active.id &&
+            state.dashboardData?.profileId == active.id &&
+            state.dashboardData?.isOnline == true
+        return TabSource.decide(
+            liveSessionOnline = liveOnline,
+            hasSnapshot = entry?.remoteSnapshot != null || state.selectedRemoteMiner != null
+        )
+    }
+
+    /**
+     * True when the viewed machine is shown from its cloud snapshot
+     * (v0.5.1) and the phone is not on Wi-Fi: a direct dial of the
+     * miner's LAN IP cannot reach it, so refresh paths skip the dial
+     * and refresh the cloud side only. On Wi-Fi the dial proceeds as
+     * before — and a failure still leaves the snapshot on the tabs.
+     */
+    private fun snapshotShownOffWifi(): Boolean =
+        !isWifiConnected() && currentTabSource() == TabDataSource.CLOUD
+
     fun manualRefresh() {
-        // Always attempt the refresh. Failures are published as an error
-        // state by the repository; silently skipping the fetch on a negative
-        // Wi-Fi check made the refresh button look broken.
+        // Attempt the local refresh — with ONE exception (v0.5.1): when
+        // the viewed machine is shown from its cloud snapshot and the
+        // phone is not on Wi-Fi, dialling its LAN IP is pointless, so
+        // only the cloud side refreshes. Otherwise failures are
+        // published as an error state by the repository; silently
+        // skipping the fetch on a negative Wi-Fi check made the refresh
+        // button look broken.
         viewModelScope.launch {
-            repository.refreshDashboardData()
+            if (!snapshotShownOffWifi()) {
+                repository.refreshDashboardData()
+            }
             syncCloudNow()
         }
     }

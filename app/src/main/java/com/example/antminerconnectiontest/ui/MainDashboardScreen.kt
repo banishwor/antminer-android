@@ -33,6 +33,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.antminerconnectiontest.domain.model.HomeLoadState
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.PhoneNicknames
+import com.example.antminerconnectiontest.domain.model.TabDataSource
+import com.example.antminerconnectiontest.domain.model.TabSource
 import com.example.antminerconnectiontest.theme.*
 import com.example.antminerconnectiontest.ui.components.MinerDetailUi
 import com.example.antminerconnectiontest.ui.components.MinerSwitcherBottomSheet
@@ -114,24 +116,44 @@ fun MainDashboardScreen(
         )
     }
 
-    // ── v0.2.0: the tabs follow the ONE selected machine ─────────────
-    // Same precedence as Home: when the selected snapshot is the same
-    // machine as the active local profile AND live local data for it is
-    // online, the tabs show the LIVE machine; otherwise a selected
-    // snapshot machine's tabs show its cloud data. With no snapshot
-    // selected, the tabs show the active local profile.
-    val selectedEntry = uiState.selectedRemoteMiner?.let { snap ->
-        mergedMiners.firstOrNull { it.remoteSnapshot?.id == snap.id }
-    }
+    // ── The tabs follow the ONE selected machine (v0.2.0) ───────────
+    // v0.5.1: and they follow the MACHINE, not the selection path (see
+    // TabSource). The machine the tabs are about is resolved to its ONE
+    // merged fleet entry — reached via its cloud snapshot or via its
+    // saved local profile — and the source is decided from that entry's
+    // facts alone. Before this fix, a machine selected through its
+    // saved profile (selectedRemoteMiner == null) kept the tabs on the
+    // local path even when only its cloud snapshot was reachable, so
+    // away from its LAN the tabs showed a connect error instead of the
+    // snapshot the fleet already held.
     val activeEntry = activeProfile?.let { profile ->
         mergedMiners.firstOrNull { it.localProfile?.id == profile.id }
     }
-    val localWinsForTabs = uiState.selectedRemoteMiner != null &&
-        activeProfile != null &&
-        selectedEntry?.localProfile?.id == activeProfile.id &&
+    /** Merged entry of the machine the tabs are about (also the nickname-edit target). */
+    val tabEntry = if (uiState.selectedRemoteMiner != null) {
+        mergedMiners.firstOrNull { it.remoteSnapshot?.id == uiState.selectedRemoteMiner?.id }
+    } else {
+        activeEntry
+    }
+    /** A live local session for THAT machine is online right now. */
+    val tabLiveOnline = activeProfile != null &&
+        tabEntry?.localProfile?.id == activeProfile.id &&
         uiState.dashboardData?.profileId == activeProfile.id &&
         uiState.dashboardData?.isOnline == true
-    val useCloudTabs = uiState.selectedRemoteMiner != null && !localWinsForTabs
+    val tabSource = TabSource.decide(
+        liveSessionOnline = tabLiveOnline,
+        // An explicitly selected snapshot counts even before the merge
+        // has emitted its entry (cold start) — it rendered as cloud
+        // then, and it still does.
+        hasSnapshot = tabEntry?.remoteSnapshot != null || uiState.selectedRemoteMiner != null
+    )
+    val useCloudTabs = tabSource == TabDataSource.CLOUD
+    /** The tab machine's cloud snapshot as unified detail (REMOTE chip source). */
+    val tabSnapshotDetail = tabEntry?.remoteSnapshot?.let { snap ->
+        snap.toMinerDetailUi(displayName = tabEntry.displayName)
+    }
+    /** The cloud detail the header + cloud tabs render, however the machine was selected. */
+    val cloudTabDetail = tabSnapshotDetail ?: selectedRemoteDetail
     val localDetail = activeProfile?.let { profile ->
         localMinerDetailUi(
             profile = profile,
@@ -140,18 +162,34 @@ fun MainDashboardScreen(
                 ?: PhoneNicknames.displayName(uiState.nicknameOverrides, profile, null)
         )
     }
-    /** The detail every Hardware/Pools/Logs header + cloud tab renders. */
+    /** The detail every Hardware/Pools/Logs header renders — it matches the data actually shown. */
     val tabDetail: MinerDetailUi? =
-        if (useCloudTabs || activeProfile == null) selectedRemoteDetail else localDetail
-    /** Merged entry of the machine the tabs are about (nickname editing). */
-    val tabEntry = if (uiState.selectedRemoteMiner != null) selectedEntry else activeEntry
+        if (useCloudTabs || activeProfile == null) cloudTabDetail else localDetail
     /**
-     * Device-tab identity card data: only when the selected machine is
-     * NOT the active local profile — that profile's full identity cards
-     * already render on the Device tab.
+     * Device-tab identity card data: only for a snapshot selection —
+     * when the selected machine is NOT the active local profile, whose
+     * full identity cards already render on the Device tab. Unchanged
+     * by v0.5.1: a profile-selected machine never grows this second
+     * identity card, even while its tabs fall back to its snapshot.
      */
-    val identityDetail: MinerDetailUi? =
-        if (activeProfile == null || useCloudTabs) selectedRemoteDetail else null
+    val identityDetail: MinerDetailUi? = when {
+        uiState.selectedRemoteMiner == null && activeProfile != null -> null
+        useCloudTabs || activeProfile == null -> cloudTabDetail
+        else -> null
+    }
+    /**
+     * The active profile machine's real data source, for the Settings
+     * saved-miners chip (v0.5.1): LIVE only while its live session is
+     * online, CLOUD when only its cloud snapshot backs it, LOCAL when
+     * it has neither — never an unconditional "ACTIVE".
+     */
+    val activeProfileSource = activeProfile?.let { profile ->
+        TabSource.decide(
+            liveSessionOnline = uiState.dashboardData?.profileId == profile.id &&
+                uiState.dashboardData?.isOnline == true,
+            hasSnapshot = activeEntry?.remoteSnapshot != null
+        )
+    }
 
     // Glass capability tier for THIS device (v0.3.0): the low-end
     // guard — low-RAM or pre-Android 12 devices get glass-lite (no
@@ -263,7 +301,7 @@ fun MainDashboardScreen(
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
                                     RemoteHardwareTab(
-                                        detail = selectedRemoteDetail,
+                                        detail = cloudTabDetail,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 } else {
@@ -289,7 +327,7 @@ fun MainDashboardScreen(
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
                                     RemotePoolsTab(
-                                        detail = selectedRemoteDetail,
+                                        detail = cloudTabDetail,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 } else {
@@ -316,7 +354,7 @@ fun MainDashboardScreen(
                                     // The selected machine's logs are
                                     // on-location: the panel names it.
                                     RemoteLogsTab(
-                                        detail = selectedRemoteDetail,
+                                        detail = cloudTabDetail,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 } else {
@@ -362,6 +400,7 @@ fun MainDashboardScreen(
                                 onSetRelayOnlyMode = viewModel::setRelayOnlyMode,
                                 onSelectProfile = viewModel::selectSavedProfile,
                                 onDeleteProfile = viewModel::deleteSavedProfile,
+                                activeProfileSource = activeProfileSource ?: TabDataSource.LOCAL,
                                 onUpdateNicknameAndLocation = viewModel::updateMinerNicknameAndLocation,
                                 onSaveCloudConfig = viewModel::updateCloudConfig,
                                 onTestCloudConnection = viewModel::testCloudConnection,
