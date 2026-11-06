@@ -35,4 +35,17 @@ interface RelayStorage {
      * it). The relay-only status screen reads this back.
      */
     fun saveRelayStatus(lastUploadMs: Long?, error: String?)
+
+    /**
+     * Per-miner live state (v0.1.2): the engine reports the outcome of
+     * every saved miner's poll, every cycle — connected (with hashrate),
+     * wrong password, unreachable, or not hashing — so a host can show
+     * WHY an entry is not uploading instead of leaving it silent.
+     *
+     * Default no-op: existing hosts (the main app) keep their exact
+     * behaviour; Relay Lite overrides it to persist the outcomes for
+     * its Saved miners list. Implementations must be cheap and must
+     * not throw (the engine calls this inside its per-miner guard).
+     */
+    fun reportMinerOutcome(profile: MinerProfile, outcome: MinerPollOutcome) {}
 }

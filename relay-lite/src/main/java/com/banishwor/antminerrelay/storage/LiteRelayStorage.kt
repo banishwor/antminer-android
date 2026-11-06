@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.relay.MinerPollOutcome
 import com.example.antminerconnectiontest.relay.RelayStorage
 import org.json.JSONArray
 import org.json.JSONObject
@@ -174,6 +175,16 @@ class LiteRelayStorage(context: Context) : RelayStorage {
             editor.remove(KEY_RELAY_LAST_ERROR)
         }
         editor.apply()
+    }
+
+    /**
+     * Per-miner live state (v0.1.2): persist each poll outcome into
+     * [LiteState], keyed by host, so the Saved miners list can show
+     * Connected / Wrong password / Unreachable / Not hashing under
+     * every entry. Cheap single-key write; never throws by contract.
+     */
+    override fun reportMinerOutcome(profile: MinerProfile, outcome: MinerPollOutcome) {
+        LiteState.saveMinerOutcome(appContext, profile.host, outcome)
     }
 
     /** (last successful upload epoch ms, last upload error) as last reported. */

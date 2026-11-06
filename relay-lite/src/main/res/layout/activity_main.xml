@@ -329,6 +329,41 @@
                     android:layout_marginTop="6dp"
                     android:paddingLeft="0dp"
                     android:text="Add miner" />
+
+                <!-- Add-and-connect outcome (v0.1.2): persistent inline
+                     text, never a toast — Connected / wrong password /
+                     unreachable, with Save anyway while it stands. -->
+                <TextView
+                    android:id="@+id/addMinerResultText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="#000000"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/addMinerActions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <Button
+                        android:id="@+id/addMinerSaveAnywayButton"
+                        style="@style/LiteBlueButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:paddingLeft="0dp"
+                        android:text="Save anyway" />
+
+                    <Button
+                        android:id="@+id/addMinerDismissButton"
+                        style="@style/LiteBlueButton"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:text="Cancel" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
@@ -429,6 +464,32 @@
                     style="@style/LiteRowDetail"
                     android:text="Checks only when you tap — never in the background." />
             </LinearLayout>
+
+            <!-- In-app update download (v0.1.2): appears only after a
+                 manual check finds a newer release. Download streams
+                 the APK with progress + cancel; Install then hands it
+                 to the system installer. -->
+            <Button
+                android:id="@+id/updateActionButton"
+                style="@style/LiteBlueButton"
+                android:text="Download update"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/downloadProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="14dp"
+                android:layout_marginRight="14dp"
+                android:max="100"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/downloadCancelButton"
+                style="@style/LiteBlueButton"
+                android:text="Cancel download"
+                android:visibility="gone" />
         </LinearLayout>
 
         <!-- SETUP -->

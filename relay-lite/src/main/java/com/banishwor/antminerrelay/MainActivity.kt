@@ -12,14 +12,22 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.banishwor.antminerrelay.storage.LiteRelayStorage
 import com.banishwor.antminerrelay.storage.LiteState
+import com.example.antminerconnectiontest.data.api.AntminerReadApiImpl
+import com.example.antminerconnectiontest.data.scanner.AntminerDetector
+import com.example.antminerconnectiontest.data.scanner.DiscoveryStatus
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.relay.MinerPollState
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
+import java.io.File
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -47,6 +55,13 @@ import kotlin.concurrent.thread
  *
  * The update check runs ONLY from its button — never on open, on
  * resume, or in any background path.
+ *
+ * v0.1.2: Add a miner is add-and-connect — the entered miner is tried
+ * for real before anything is stored, and the outcome stands inline
+ * (Connected / wrong password / unreachable, with Save anyway);
+ * every saved row shows the engine's latest per-miner outcome
+ * (persisted in [LiteState]); and a found update can be downloaded
+ * and installed in-app, still only ever from a tap.
  */
 class MainActivity : Activity() {
 
@@ -71,6 +86,14 @@ class MainActivity : Activity() {
     private lateinit var lastErrorText: TextView
     private lateinit var checkUpdatesButton: Button
     private lateinit var updateResultText: TextView
+    private lateinit var addMinerButton: Button
+    private lateinit var addMinerResultText: TextView
+    private lateinit var addMinerActions: LinearLayout
+    private lateinit var addMinerSaveAnywayButton: Button
+    private lateinit var addMinerDismissButton: Button
+    private lateinit var updateActionButton: Button
+    private lateinit var downloadProgress: ProgressBar
+    private lateinit var downloadCancelButton: Button
 
     /** Release page to open when the update result is tapped. */
     @Volatile
@@ -78,6 +101,36 @@ class MainActivity : Activity() {
 
     @Volatile
     private var updateCheckRunning = false
+
+    // --- Add-and-connect state (v0.1.2) ---------------------------------------
+
+    /** The profile from the latest connect attempt, awaiting a decision. */
+    @Volatile
+    private var pendingProfile: MinerProfile? = null
+
+    @Volatile
+    private var connectRunning = false
+
+    /** What the dismiss button does for the standing outcome. */
+    private var pendingDismissIsCancel = true
+
+    // --- Update download state (v0.1.2) ----------------------------------------
+
+    private var pendingApkUrl: String? = null
+    private var pendingApkVersion: String? = null
+    private var downloadedApk: File? = null
+
+    @Volatile
+    private var downloadRunning = false
+
+    @Volatile
+    private var downloadCancelled = false
+
+    /** Per-row outcome lines (profile id -> view), updated by the 2 s tick. */
+    private val outcomeViews = LinkedHashMap<String, TextView>()
+
+    /** Profiles as last rendered, so the tick can map outcomes by host. */
+    private var currentProfiles: List<MinerProfile> = emptyList()
 
     private val refreshHandler = Handler(Looper.getMainLooper())
     private val refreshTick = object : Runnable {
@@ -115,6 +168,14 @@ class MainActivity : Activity() {
         lastErrorText = findViewById(R.id.lastErrorText)
         checkUpdatesButton = findViewById(R.id.checkUpdatesButton)
         updateResultText = findViewById(R.id.updateResultText)
+        addMinerButton = findViewById(R.id.addMinerButton)
+        addMinerResultText = findViewById(R.id.addMinerResultText)
+        addMinerActions = findViewById(R.id.addMinerActions)
+        addMinerSaveAnywayButton = findViewById(R.id.addMinerSaveAnywayButton)
+        addMinerDismissButton = findViewById(R.id.addMinerDismissButton)
+        updateActionButton = findViewById(R.id.updateActionButton)
+        downloadProgress = findViewById(R.id.downloadProgress)
+        downloadCancelButton = findViewById(R.id.downloadCancelButton)
 
         val config = storage.loadCloudConfig()
         userNameField.setText(config.userName)
@@ -130,7 +191,11 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Identity saved", Toast.LENGTH_SHORT).show()
             refreshStatus()
         }
-        findViewById<Button>(R.id.addMinerButton).setOnClickListener { addMiner() }
+        addMinerButton.setOnClickListener { addMiner() }
+        addMinerSaveAnywayButton.setOnClickListener { savePendingMinerAnyway() }
+        addMinerDismissButton.setOnClickListener { dismissPendingMiner() }
+        updateActionButton.setOnClickListener { onUpdateAction() }
+        downloadCancelButton.setOnClickListener { downloadCancelled = true }
         wireCollapsible(R.id.advancedToggle, R.id.advancedContainer)
         wireCollapsible(R.id.addMinerToggle, R.id.addMinerContainer)
         wireCollapsible(R.id.setupToggle, R.id.setupContainer)
@@ -212,7 +277,19 @@ class MainActivity : Activity() {
 
     // --- Saved miners ------------------------------------------------------------
 
+    /**
+     * Add-and-connect (v0.1.2): Save no longer stores blindly. The
+     * entered miner is tried for real on a background thread — summary
+     * with the entered credentials, pools for the worker name — and the
+     * outcome stands as persistent inline text: Connected (saved),
+     * wrong password, or unreachable, the failures offering Save anyway
+     * (the engine retries saved entries every cycle) or edit/cancel.
+     * Failure classification follows the detector's signature probe —
+     * the same signal the engine's auto-connect uses: OFFLINE means
+     * nothing answered; anything answering means the login was rejected.
+     */
     private fun addMiner() {
+        if (connectRunning) return
         val host = hostField.text.toString().trim()
         if (host.isBlank()) {
             Toast.makeText(this, "Enter the miner's IP address", Toast.LENGTH_SHORT).show()
@@ -226,17 +303,138 @@ class MainActivity : Activity() {
             username = minerUserField.text.toString().trim().ifBlank { "root" },
             password = minerPassField.text.toString().ifBlank { "root" }
         )
+        pendingProfile = profile
+        connectRunning = true
+        setAddFormEnabled(false)
+        addMinerActions.visibility = View.GONE
+        showAddResult("Connecting to $host…")
+
+        thread(name = "lite-add-miner") {
+            val readApi = AntminerReadApiImpl()
+            val summaryRes = try {
+                runBlocking { readApi.getSummary(profile) }
+            } catch (e: Exception) {
+                null
+            }
+            val outcome: AddOutcome = if (summaryRes != null && summaryRes.isSuccess) {
+                // Connected: learn the worker identity from the
+                // miner's own pool config; a learned name wins for
+                // the saved profile (same rule as the engine).
+                val learned = try {
+                    runBlocking { readApi.getPools(profile) }.getOrNull()
+                        ?.firstOrNull { it.user.isNotBlank() }?.user?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                } catch (e: Exception) {
+                    null
+                }
+                AddOutcome.Connected(learned)
+            } else {
+                val signature = try {
+                    runBlocking { AntminerDetector().detectSignature(host) }
+                } catch (e: Exception) {
+                    DiscoveryStatus.OFFLINE
+                }
+                if (signature == DiscoveryStatus.OFFLINE) {
+                    AddOutcome.Unreachable
+                } else {
+                    AddOutcome.WrongPassword
+                }
+            }
+            runOnUiThread {
+                connectRunning = false
+                if (isFinishing) return@runOnUiThread
+                onAddOutcome(profile, outcome)
+            }
+        }
+    }
+
+    private sealed interface AddOutcome {
+        /** Summary read OK; [learnedWorker] from pools, may be null. */
+        data class Connected(val learnedWorker: String?) : AddOutcome
+        object WrongPassword : AddOutcome
+        object Unreachable : AddOutcome
+    }
+
+    private fun onAddOutcome(profile: MinerProfile, outcome: AddOutcome) {
+        when (outcome) {
+            is AddOutcome.Connected -> {
+                val workerName = outcome.learnedWorker ?: profile.workerName
+                val saved = profile.copy(
+                    workerName = workerName,
+                    displayName = workerName.ifBlank { profile.displayName }
+                )
+                storage.saveProfiles(storage.loadSavedProfiles() + saved)
+                pendingProfile = null
+                resetAddForm()
+                showAddResult(
+                    "✓ Connected — ${workerName.ifBlank { profile.host }} at ${profile.host}"
+                )
+                refreshProfiles()
+            }
+            AddOutcome.WrongPassword -> {
+                setAddFormEnabled(true)
+                showAddResult("⚠ The miner answered but the login failed — check the password.")
+                pendingDismissIsCancel = false
+                addMinerDismissButton.text = "Edit"
+                addMinerActions.visibility = View.VISIBLE
+            }
+            AddOutcome.Unreachable -> {
+                setAddFormEnabled(true)
+                showAddResult("⚠ Can't reach a miner at ${profile.host}.")
+                pendingDismissIsCancel = true
+                addMinerDismissButton.text = "Cancel"
+                addMinerActions.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    /** Save anyway: store exactly what was entered; the engine retries it every cycle. */
+    private fun savePendingMinerAnyway() {
+        val profile = pendingProfile ?: return
         storage.saveProfiles(storage.loadSavedProfiles() + profile)
+        pendingProfile = null
+        addMinerActions.visibility = View.GONE
+        resetAddForm()
+        showAddResult("Saved anyway — the relay keeps retrying ${profile.host} every cycle.")
+        refreshProfiles()
+    }
+
+    /** Dismiss: Edit keeps the typed values for fixing; Cancel discards the entry. */
+    private fun dismissPendingMiner() {
+        pendingProfile = null
+        addMinerActions.visibility = View.GONE
+        if (pendingDismissIsCancel) {
+            resetAddForm()
+            addMinerResultText.visibility = View.GONE
+        }
+        setAddFormEnabled(true)
+    }
+
+    private fun showAddResult(text: String) {
+        addMinerResultText.text = text
+        addMinerResultText.visibility = View.VISIBLE
+    }
+
+    private fun resetAddForm() {
         hostField.text.clear()
         workerField.text.clear()
         minerPassField.text.clear()
-        Toast.makeText(this, "Miner saved: $host", Toast.LENGTH_SHORT).show()
-        refreshProfiles()
+        setAddFormEnabled(true)
+    }
+
+    private fun setAddFormEnabled(enabled: Boolean) {
+        addMinerButton.isEnabled = enabled
+        workerField.isEnabled = enabled
+        hostField.isEnabled = enabled
+        minerUserField.isEnabled = enabled
+        minerPassField.isEnabled = enabled
     }
 
     private fun refreshProfiles() {
         profilesContainer.removeAllViews()
+        outcomeViews.clear()
         val profiles = storage.loadSavedProfiles()
+        currentProfiles = profiles
         if (profiles.isEmpty()) {
             val empty = TextView(this)
             empty.text = "No miners saved yet. Fleet machines from the sheet are also auto-connected when this phone joins their Wi-Fi."
@@ -274,6 +472,16 @@ class MainActivity : Activity() {
             detail.setTextColor(Color.parseColor("#6E6E73"))
             detail.textSize = 13f
             texts.addView(detail)
+
+            // Live state (v0.1.2): the engine's latest poll outcome
+            // for this host, refreshed by the 2 s tick — an entry the
+            // relay cannot use says why, and a saved-anyway entry
+            // flips to Connected by itself once a cycle reaches it.
+            val live = TextView(this)
+            live.textSize = 13f
+            live.visibility = View.GONE
+            texts.addView(live)
+            outcomeViews[profile.id] = live
             row.addView(texts)
 
             val remove = Button(this)
@@ -318,6 +526,41 @@ class MainActivity : Activity() {
         countersText.text =
             "${LiteState.serviceStarts(applicationContext)} · ${LiteState.bootStarts(applicationContext)}"
         lastErrorText.text = lastError?.takeIf { it.isNotBlank() } ?: "None"
+
+        refreshOutcomeLines()
+    }
+
+    /** Repaints each Saved miner row's live-state line from [LiteState]. */
+    private fun refreshOutcomeLines() {
+        if (outcomeViews.isEmpty()) return
+        val outcomes = LiteState.loadMinerOutcomes(applicationContext)
+        for (profile in currentProfiles) {
+            val view = outcomeViews[profile.id] ?: continue
+            val outcome = outcomes[profile.host]
+            if (outcome == null) {
+                view.visibility = View.GONE
+                continue
+            }
+            view.visibility = View.VISIBLE
+            when (outcome.state) {
+                MinerPollState.CONNECTED -> {
+                    view.text = "Connected • ${String.format(Locale.US, "%.1f", outcome.hashrateTh)} TH/s"
+                    view.setTextColor(Color.parseColor("#248A3D"))
+                }
+                MinerPollState.AUTH_FAILED -> {
+                    view.text = "Wrong password — check the entry"
+                    view.setTextColor(Color.parseColor("#B3261E"))
+                }
+                MinerPollState.UNREACHABLE -> {
+                    view.text = "Unreachable — retrying automatically"
+                    view.setTextColor(Color.parseColor("#6E6E73"))
+                }
+                MinerPollState.NOT_HASHING -> {
+                    view.text = "Answered — not hashing"
+                    view.setTextColor(Color.parseColor("#B26A00"))
+                }
+            }
+        }
     }
 
     private fun ageText(epochMs: Long): String {
@@ -335,12 +578,23 @@ class MainActivity : Activity() {
 
     // --- Manual update check (button only — never automatic) ---------------------
 
-    private data class LatestLite(val version: String, val parts: List<Int>, val url: String)
+    private data class LatestLite(
+        val version: String,
+        val parts: List<Int>,
+        val url: String,
+        val apkUrl: String?
+    )
 
     private fun checkForUpdates() {
         if (updateCheckRunning) return
         updateCheckRunning = true
         updateUrl = null
+        pendingApkUrl = null
+        pendingApkVersion = null
+        downloadedApk = null
+        updateActionButton.visibility = View.GONE
+        downloadProgress.visibility = View.GONE
+        downloadCancelButton.visibility = View.GONE
         checkUpdatesButton.isEnabled = false
         updateResultText.setTextColor(Color.BLACK)
         updateResultText.text = "Checking…"
@@ -361,6 +615,17 @@ class MainActivity : Activity() {
                         updateUrl = latest.url
                         updateResultText.setTextColor(Color.parseColor("#007AFF"))
                         updateResultText.text = "Update available: v${latest.version}"
+                        // In-app download (v0.1.2): offered only when
+                        // the release carries an APK asset; the
+                        // release-page link (tap the line above) stays
+                        // as the fallback either way.
+                        if (latest.apkUrl != null) {
+                            pendingApkUrl = latest.apkUrl
+                            pendingApkVersion = latest.version
+                            downloadedApk = null
+                            updateActionButton.text = "Download update"
+                            updateActionButton.visibility = View.VISIBLE
+                        }
                     }
                     else -> updateResultText.text = "You're on the latest version."
                 }
@@ -390,12 +655,167 @@ class MainActivity : Activity() {
                 val parts = versionParts(version) ?: continue
                 val current = best
                 if (current == null || compareVersions(parts, current.parts) > 0) {
-                    best = LatestLite(version, parts, release.optString("html_url"))
+                    var apkUrl: String? = null
+                    val assets = release.optJSONArray("assets")
+                    if (assets != null) {
+                        for (j in 0 until assets.length()) {
+                            val asset = assets.optJSONObject(j) ?: continue
+                            if (asset.optString("name").endsWith(".apk")) {
+                                apkUrl = asset.optString("browser_download_url")
+                                    .takeIf { it.isNotBlank() }
+                                break
+                            }
+                        }
+                    }
+                    best = LatestLite(version, parts, release.optString("html_url"), apkUrl)
                 }
             }
             return best
         } finally {
             connection.disconnect()
+        }
+    }
+
+    // --- In-app update download (v0.1.2; still only ever user-tapped) ---------
+
+    private fun onUpdateAction() {
+        val downloaded = downloadedApk
+        if (downloaded != null) {
+            installDownloadedUpdate(downloaded)
+        } else if (!downloadRunning) {
+            downloadUpdate()
+        }
+    }
+
+    /**
+     * Streams the release APK to cacheDir/updates with progress and a
+     * working Cancel. GitHub asset URLs redirect to storage, so
+     * redirects are followed manually (HttpsURLConnection does not
+     * follow cross-host redirects on its own).
+     */
+    private fun downloadUpdate() {
+        val url = pendingApkUrl ?: return
+        val version = pendingApkVersion ?: return
+        downloadRunning = true
+        downloadCancelled = false
+        updateActionButton.visibility = View.GONE
+        downloadCancelButton.visibility = View.VISIBLE
+        downloadProgress.progress = 0
+        downloadProgress.visibility = View.VISIBLE
+        updateResultText.setTextColor(Color.BLACK)
+        updateResultText.text = "Downloading update v$version…"
+
+        thread(name = "lite-update-download") {
+            val dir = File(cacheDir, "updates")
+            val target = File(dir, "RelayLite-v$version.apk")
+            var failure: String? = null
+            var lastPercent = -1
+            try {
+                dir.mkdirs()
+                var connection = openHttps(url)
+                var redirects = 0
+                while (connection.responseCode in REDIRECT_CODES && redirects < 5) {
+                    val location = connection.getHeaderField("Location")
+                        ?: throw Exception("HTTP ${connection.responseCode} with no redirect target")
+                    connection.disconnect()
+                    connection = openHttps(location)
+                    redirects++
+                }
+                if (connection.responseCode != 200) {
+                    throw Exception("HTTP ${connection.responseCode}")
+                }
+                val total = connection.contentLengthLong
+                connection.inputStream.use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var copied = 0L
+                        while (true) {
+                            if (downloadCancelled) break
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            copied += read
+                            if (total > 0) {
+                                val percent = (copied * 100 / total).toInt()
+                                if (percent != lastPercent) {
+                                    lastPercent = percent
+                                    runOnUiThread {
+                                        if (isFinishing) return@runOnUiThread
+                                        downloadProgress.progress = percent
+                                        updateResultText.text =
+                                            "Downloading update v$version… $percent%"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                connection.disconnect()
+                if (downloadCancelled) {
+                    target.delete()
+                }
+            } catch (e: Exception) {
+                failure = e.message ?: "network error"
+                target.delete()
+            }
+
+            runOnUiThread {
+                downloadRunning = false
+                if (isFinishing) return@runOnUiThread
+                downloadCancelButton.visibility = View.GONE
+                downloadProgress.visibility = View.GONE
+                when {
+                    downloadCancelled -> {
+                        updateResultText.text =
+                            "Download cancelled. Tap the version line to open the release page instead."
+                        updateActionButton.text = "Download update"
+                        updateActionButton.visibility = View.VISIBLE
+                    }
+                    failure != null -> {
+                        updateResultText.text =
+                            "Download failed ($failure). Tap the version line to open the release page instead."
+                        updateActionButton.text = "Download update"
+                        updateActionButton.visibility = View.VISIBLE
+                    }
+                    else -> {
+                        downloadedApk = target
+                        updateResultText.text = "Update v$version downloaded."
+                        updateActionButton.text = "Install"
+                        updateActionButton.visibility = View.VISIBLE
+                    }
+                }
+            }
+        }
+    }
+
+    private fun openHttps(url: String): HttpsURLConnection {
+        val connection = URL(url).openConnection() as HttpsURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 30_000
+        connection.instanceFollowRedirects = false
+        connection.setRequestProperty("User-Agent", "AntminerRelayLite/${BuildConfig.VERSION_NAME}")
+        return connection
+    }
+
+    /**
+     * Hands the downloaded APK to the system installer via the
+     * FileProvider (same pattern as the main app's updater). On API 22
+     * "install unknown apps" is the single global setting — there is
+     * no per-app detour; if the installer still refuses, the
+     * release-page link above remains the fallback.
+     */
+    private fun installDownloadedUpdate(file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            updateResultText.text =
+                "Couldn't open the installer (${e.message}). Tap the version line to use the release page."
         }
     }
 
@@ -422,5 +842,6 @@ class MainActivity : Activity() {
         private const val RELEASES_URL =
             "https://api.github.com/repos/banishwor/antminer-android/releases?per_page=30"
         private const val TAG_PREFIX = "relay-lite-v"
+        private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
     }
 }

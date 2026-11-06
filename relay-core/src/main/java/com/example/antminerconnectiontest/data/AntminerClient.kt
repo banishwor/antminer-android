@@ -82,19 +82,53 @@ class AntminerClient {
         // refresh, every 15 s, forever). Keys live in memory only.
         private val CLIENT_CACHE = ConcurrentHashMap<String, OkHttpClient>()
         private const val MAX_CACHED_CLIENTS = 32
+
+        private fun cacheKey(
+            cleanIp: String,
+            username: String,
+            password: String,
+            readTimeoutSeconds: Long
+        ): String = "$cleanIp|$username|$password|$readTimeoutSeconds"
+
+        /**
+         * Evicts the cached client for one credential set (v0.1.2).
+         *
+         * The cached client's digest-auth cache is never invalidated
+         * by the library: in a days-long relay process, a miner reboot
+         * (power cut, long off) changes the miner's digest nonce, and
+         * the cached preemptive digest can then keep failing with 401
+         * — indistinguishable from a wrong password — until the client
+         * is recreated. Evicting on a final AUTHENTICATION_FAILED
+         * result makes the NEXT attempt build a fresh client and run
+         * a clean digest challenge: a miner that still 401s with a
+         * fresh client has a genuinely wrong password.
+         *
+         * Returns true when an entry was actually evicted. Internal:
+         * called from the request paths and exercised by unit tests.
+         */
+        internal fun invalidateClient(
+            cleanIp: String,
+            username: String,
+            password: String,
+            readTimeoutSeconds: Long = READ_TIMEOUT_SECONDS
+        ): Boolean =
+            CLIENT_CACHE.remove(cacheKey(cleanIp, username, password, readTimeoutSeconds)) != null
     }
 
     /**
      * Returns the shared client for a miner (host + credentials + timeout
      * profile), creating and caching it on first use.
+     *
+     * Internal (not private) so unit tests can observe the cache /
+     * eviction behaviour; not part of the public API surface.
      */
-    private fun clientFor(
+    internal fun clientFor(
         cleanIp: String,
         username: String,
         password: String,
         readTimeoutSeconds: Long = READ_TIMEOUT_SECONDS
     ): OkHttpClient {
-        val key = "$cleanIp|$username|$password|$readTimeoutSeconds"
+        val key = cacheKey(cleanIp, username, password, readTimeoutSeconds)
         CLIENT_CACHE[key]?.let { return it }
         if (CLIENT_CACHE.size >= MAX_CACHED_CLIENTS) CLIENT_CACHE.clear()
 
@@ -183,6 +217,12 @@ class AntminerClient {
                         )
                     }
                     401 -> {
+                        // Final 401 (after the authenticator's retry):
+                        // evict this credential set's client so the
+                        // next attempt runs a clean digest challenge —
+                        // the cached preemptive digest may simply be
+                        // stale after a miner reboot (v0.1.2).
+                        invalidateClient(cleanIp, username, password)
                         ConnectionResult.Failure(
                             errorType = ErrorType.AUTHENTICATION_FAILED,
                             statusCode = statusCode,
@@ -302,11 +342,15 @@ class AntminerClient {
 
                 when (statusCode) {
                     200 -> ConnectionResult.Success(statusCode, responseBody, duration)
-                    401 -> ConnectionResult.Failure(
-                        errorType = ErrorType.AUTHENTICATION_FAILED,
-                        statusCode = statusCode,
-                        message = "Authentication failed (HTTP 401 Unauthorized)."
-                    )
+                    401 -> {
+                        // Same stale-digest eviction as fetchEndpoint.
+                        invalidateClient(cleanIp, username, password)
+                        ConnectionResult.Failure(
+                            errorType = ErrorType.AUTHENTICATION_FAILED,
+                            statusCode = statusCode,
+                            message = "Authentication failed (HTTP 401 Unauthorized)."
+                        )
+                    }
                     else -> ConnectionResult.Failure(
                         errorType = ErrorType.HTTP_ERROR,
                         statusCode = statusCode,

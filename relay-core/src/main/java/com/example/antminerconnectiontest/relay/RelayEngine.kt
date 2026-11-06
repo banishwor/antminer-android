@@ -105,8 +105,17 @@ class RelayEngine(
                 val profiles = storage.loadSavedProfiles()
                 val snapshots = mutableListOf<RemoteMinerSnapshot>()
                 var deferredCount = 0
+                // Honest failure counts (v0.1.2): a failed poll is no
+                // longer silently dropped — it is classified (wrong
+                // password vs unreachable vs answered-but-not-hashing),
+                // counted for the cycle status below, and reported
+                // per miner through storage.reportMinerOutcome.
+                var authFailedCount = 0
+                var unreachableCount = 0
+                var notHashingCount = 0
 
                 for (profile in profiles) {
+                    var outcome: MinerPollOutcome? = null
                     try {
                         val summaryRes = readApi.getSummary(profile)
                         val summary = summaryRes.getOrNull()
@@ -131,6 +140,7 @@ class RelayEngine(
                             val maxFan = stats?.maxFanRpm ?: 0
 
                             if (rate5s > 0.0 || avgRate > 0.0) {
+                                outcome = MinerPollOutcome(MinerPollState.CONNECTED, rate5s)
                                 // Machine identity = the worker
                                 // username, resolved before the
                                 // snapshot exists (see
@@ -169,13 +179,41 @@ class RelayEngine(
                                         )
                                     )
                                 }
+                            } else {
+                                // Answered and read fine, but mining
+                                // nothing (v0.1.2): its own state —
+                                // not "unreachable".
+                                notHashingCount++
+                                outcome = MinerPollOutcome(MinerPollState.NOT_HASHING)
                             }
+                        } else {
+                            // The summary read failed: classify it
+                            // (401 = wrong password; anything else =
+                            // no usable answer) instead of silently
+                            // skipping the miner (v0.1.2).
+                            val state = MinerPollClassifier
+                                .stateForException(summaryRes.exceptionOrNull())
+                            when (state) {
+                                MinerPollState.AUTH_FAILED -> authFailedCount++
+                                else -> unreachableCount++
+                            }
+                            outcome = MinerPollOutcome(state)
                         }
                     } catch (e: Exception) {
                         // One miner's unexpected failure must
                         // not stop the others (v0.3.1: no stack
                         // dump per miner per cycle — failures
                         // surface via the cycle status report).
+                        unreachableCount++
+                        outcome = MinerPollOutcome(MinerPollState.UNREACHABLE)
+                    }
+                    outcome?.let {
+                        try {
+                            storage.reportMinerOutcome(profile, it)
+                        } catch (_: Exception) {
+                            // Reporting is best-effort: it must never
+                            // break the cycle it describes.
+                        }
                     }
                 }
 
@@ -233,17 +271,22 @@ class RelayEngine(
                 } else if (guardedCount > 0) {
                     listener.onRelayStatus(
                         "⚡ Relay Standby • Local Only",
-                        "$guardedCount machine(s) on this Wi-Fi belong to another relay user • Shown locally, not uploaded"
+                        "$guardedCount machine(s) on this Wi-Fi belong to another relay user • Shown locally, not uploaded" +
+                            MinerPollClassifier.extraNote(authFailedCount, unreachableCount, notHashingCount)
                     )
                 } else if (deferredCount > 0) {
                     listener.onRelayStatus(
                         "⚡ Relay Standby • Upload Deferred",
-                        "$deferredCount miner(s) reachable but their worker name is unknown • Nothing uploaded under a device id"
+                        "$deferredCount miner(s) reachable but their worker name is unknown • Nothing uploaded under a device id" +
+                            MinerPollClassifier.extraNote(authFailedCount, unreachableCount, notHashingCount)
                     )
                 } else {
+                    // v0.1.2: composed from the real failure counts —
+                    // a wrong password is never again reported as
+                    // "unreachable" (see MinerPollClassifier).
                     listener.onRelayStatus(
                         "⚡ Relay Standby • 0 Miners Online",
-                        "Local miners unreachable on current Wi-Fi • Upload skipped"
+                        MinerPollClassifier.standbyContent(authFailedCount, unreachableCount, notHashingCount)
                     )
                 }
             }

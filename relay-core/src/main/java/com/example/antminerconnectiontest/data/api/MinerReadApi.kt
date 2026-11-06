@@ -2,6 +2,7 @@ package com.example.antminerconnectiontest.data.api
 
 import com.example.antminerconnectiontest.data.AntminerClient
 import com.example.antminerconnectiontest.data.ConnectionResult
+import com.example.antminerconnectiontest.data.ErrorType
 import com.example.antminerconnectiontest.data.parser.AntminerJsonParsers
 import com.example.antminerconnectiontest.domain.model.*
 import kotlinx.coroutines.CancellationException
@@ -24,6 +25,28 @@ interface MinerReadApi {
     suspend fun getAvailableLogDates(profile: MinerProfile): Result<List<String>>
     suspend fun createLogBackup(profile: MinerProfile, dateIds: List<String>): Result<String>
     suspend fun downloadLogArchive(profile: MinerProfile, archiveName: String, destinationFile: File, onProgress: (Long, Long) -> Unit = { _, _ -> }): Result<File>
+}
+
+/**
+ * A failed miner read that preserves the client's failure classification
+ * (v0.1.2). [AntminerClient.fetchEndpoint] distinguishes an HTTP 401
+ * ([ErrorType.AUTHENTICATION_FAILED]) from timeouts / connect failures
+ * ([ErrorType.TIMEOUT] / [ErrorType.UNREACHABLE]); until now
+ * [AntminerReadApiImpl] flattened that into a plain [Exception] carrying
+ * only the message string, so callers (the relay engine) could not tell
+ * a wrong password from an unreachable miner and reported both as
+ * "unreachable". The message is unchanged — only the type is richer.
+ */
+class MinerReadException(
+    val errorType: ErrorType,
+    val statusCode: Int?,
+    message: String
+) : Exception(message) {
+    constructor(failure: ConnectionResult.Failure) : this(
+        failure.errorType,
+        failure.statusCode,
+        failure.message
+    )
 }
 
 /**
@@ -163,7 +186,7 @@ class AntminerReadApiImpl(
 
         return when (result) {
             is ConnectionResult.Success -> Result.success(result.responseBody)
-            is ConnectionResult.Failure -> Result.failure(Exception(result.message))
+            is ConnectionResult.Failure -> Result.failure(MinerReadException(result))
         }
     }
 
@@ -191,7 +214,7 @@ class AntminerReadApiImpl(
                 }
             }
             is ConnectionResult.Failure -> {
-                Result.failure(Exception(result.message))
+                Result.failure(MinerReadException(result))
             }
         }
     }

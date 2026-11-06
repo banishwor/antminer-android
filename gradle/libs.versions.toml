@@ -1,6 +1,11 @@
 [versions]
 androidGradlePlugin = "9.0.1"
 androidxCore = "1.18.0"
+# Relay Lite pins the last API-22-compatible core line: androidx.core
+# 1.18 declares minSdk 23, which cannot merge into the minSdk 22 app.
+# 1.17.0 declares minSdk 21 and provides FileProvider for the in-app
+# update installer (v0.1.2).
+androidxCoreApi22 = "1.17.0"
 androidxLifecycle = "2.10.0"
 androidxActivity = "1.13.0"
 androidxComposeBom = "2026.03.01"
@@ -16,6 +21,7 @@ okhttpDigest = "3.1.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+androidx-core-api22 = { module = "androidx.core:core", version.ref = "androidxCoreApi22" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "androidxComposeBom" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3"}

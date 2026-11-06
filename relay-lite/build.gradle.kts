@@ -20,8 +20,8 @@ android {
         applicationId = "com.banishwor.antminerrelay"
         minSdk = 22
         targetSdk = 22
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     buildTypes {
@@ -59,4 +59,9 @@ dependencies {
     // The shared relay core: models, CGI client, cloud sync, engine.
     // It brings OkHttp + coroutines as api dependencies.
     implementation(project(":relay-core"))
+
+    // FileProvider only, for the in-app update installer (v0.1.2).
+    // Pinned to the API-22-compatible core line (see the version
+    // catalog): the current androidx.core declares minSdk 23.
+    implementation(libs.androidx.core.api22)
 }

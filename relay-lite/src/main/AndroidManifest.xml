@@ -39,6 +39,21 @@
             android:name=".WatchdogReceiver"
             android:exported="false" />
 
+        <!-- Serves the downloaded update APK (cacheDir/updates only)
+             to the system installer — same pattern as the main app.
+             androidx.core is pinned to the API-22-compatible line in
+             the version catalog: the current core (1.18) declares
+             minSdk 23 and cannot merge into this app. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>
