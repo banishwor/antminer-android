@@ -2,13 +2,14 @@ package com.example.antminerconnectiontest.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -261,13 +262,20 @@ fun StatusDot(isOnline: Boolean, isStale: Boolean = false, size: Int = 9) {
  * The context header every Hardware / Pools / Logs tab opens with
  * (v0.2.0): which machine this tab is about — nickname big, worker
  * small, the source chip, and the cloud "last updated" line.
+ *
+ * v0.5.2 (user request): the header's action is SWITCHING machines,
+ * not editing the nickname — on a tab you are viewing a machine, and
+ * the useful move is jumping to another one. Tapping the identity
+ * area (or the swap icon beside the name) opens the machine switcher;
+ * nickname editing stays where it already lives — the Home fleet-row
+ * pencil and Settings.
  */
 @Composable
 fun SelectedMachineHeader(
     detail: MinerDetailUi,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
-    onEditNickname: (() -> Unit)? = null,
+    onSwitchMachine: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -284,7 +292,17 @@ fun SelectedMachineHeader(
         ) {
             StatusDot(isOnline = detail.isOnline, isStale = detail.isStale)
             Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (onSwitchMachine != null) {
+                            Modifier.clickable { onSwitchMachine() }
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = detail.displayName,
@@ -292,18 +310,15 @@ fun SelectedMachineHeader(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (onEditNickname != null) {
-                        IconButton(
-                            onClick = onEditNickname,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Set nickname on this phone",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
+                    if (onSwitchMachine != null) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Switch machine",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .size(18.dp)
+                        )
                     }
                 }
                 val workerLine = detail.workerName.takeIf {

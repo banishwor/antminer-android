@@ -1536,6 +1536,17 @@ class DashboardViewModel(
     }
 
     /**
+     * A pick from the Hardware / Pools / Logs header machine switcher
+     * (v0.5.2): exactly the selection a Home fleet-row pick makes —
+     * including activating the local profile of a merged machine, so
+     * live data can take over — but the user STAYS on the tab they are
+     * viewing. Every tab rebinds to the newly picked machine.
+     */
+    fun selectRemoteMinerFromTabHeader(remote: RemoteMinerSnapshot) {
+        selectRemoteMiner(remote, switchToHome = false)
+    }
+
+    /**
      * [switchToHome] is true for deliberate user picks (a fleet-row tap
      * lands on Home, as before); the v0.2.0 default-selection passes
      * false so merely opening another tab never yanks the user Home.

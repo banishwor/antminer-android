@@ -25,6 +25,8 @@ import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.HomeContent
 import com.example.antminerconnectiontest.domain.model.HomeLoadState
 import com.example.antminerconnectiontest.domain.model.FleetSorting
+import com.example.antminerconnectiontest.domain.model.HeroDetailChoice
+import com.example.antminerconnectiontest.domain.model.HeroDetailKind
 import com.example.antminerconnectiontest.domain.model.HeroSummary
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
 import com.example.antminerconnectiontest.domain.model.MinerDashboardData
@@ -140,7 +142,6 @@ fun HomeScreen(
         data?.profileId == profile.id &&
         data?.isOnline == true
     val effectiveRemote = if (localWinsForSelectedRemote) null else selectedRemoteMiner
-    val isSnapshotSelection = effectiveRemote != null
     val effectiveRetry = onRetry ?: onManualRefresh
 
     // Tick every 5 s so freshness/stale indicators can appear even when
@@ -152,9 +153,6 @@ fun HomeScreen(
             delay(5_000L)
         }
     }
-    // Older than ~2 poll cycles (2 x 15 s) without a refresh landing.
-    val isStaleLocal = !isSnapshotSelection && profile != null && data != null && nowMs - data.lastUpdated > 30_000L
-
     val sortedRows = remember(mergedMiners, nowMs) {
         FleetSorting.sortEntries(mergedMiners, nowMs)
     }
@@ -173,14 +171,40 @@ fun HomeScreen(
         ""
     }
 
-    val heroDetail: MinerDetailUi? = when {
-        effectiveRemote != null -> effectiveRemote.toMinerDetailUi(displayName = selectedDisplayName)
-        profile != null -> localMinerDetailUi(profile, data, selectedDisplayName)
-        defaultRow?.entry?.remoteSnapshot != null ->
-            defaultRow.entry.remoteSnapshot!!.toMinerDetailUi(displayName = defaultRow.displayName)
-        defaultRow?.entry?.localProfile != null ->
-            localMinerDetailUi(defaultRow.entry.localProfile!!, null, defaultRow.displayName)
-        else -> null
+    // Which detail the hero renders (v0.5.2 — see [HeroDetailChoice]):
+    // resolved from the selected machine's merged fleet entry, so a
+    // profile-selected machine whose snapshot is already in the fleet
+    // shows that snapshot from the first frame — no fleet-row tap
+    // needed to "fix" the hero, and no connect-error card while the
+    // snapshot is what's being shown.
+    val heroKind = HeroDetailChoice.choose(
+        hasExplicitSnapshot = selectedRemoteMiner != null,
+        explicitSnapshotSupersededByLiveLocal = localWinsForSelectedRemote,
+        hasActiveProfile = profile != null,
+        profileLiveOnline = profile != null && data?.profileId == profile.id && data?.isOnline == true,
+        profileEntryHasSnapshot = activeEntry?.remoteSnapshot != null,
+        defaultEntryHasSnapshot = defaultRow?.entry?.remoteSnapshot != null,
+        defaultEntryHasProfile = defaultRow?.entry?.localProfile != null
+    )
+    /** True whenever the hero is showing cloud snapshot data, however the machine was selected. */
+    val isSnapshotSelection = heroKind == HeroDetailKind.EXPLICIT_SNAPSHOT ||
+        heroKind == HeroDetailKind.PROFILE_SNAPSHOT ||
+        heroKind == HeroDetailKind.DEFAULT_SNAPSHOT
+    // Older than ~2 poll cycles (2 x 15 s) without a refresh landing.
+    val isStaleLocal = !isSnapshotSelection && profile != null && data != null && nowMs - data.lastUpdated > 30_000L
+
+    val heroDetail: MinerDetailUi? = when (heroKind) {
+        HeroDetailKind.EXPLICIT_SNAPSHOT ->
+            effectiveRemote!!.toMinerDetailUi(displayName = selectedDisplayName)
+        HeroDetailKind.PROFILE_SNAPSHOT ->
+            activeEntry!!.remoteSnapshot!!.toMinerDetailUi(displayName = selectedDisplayName)
+        HeroDetailKind.PROFILE_LOCAL ->
+            localMinerDetailUi(profile!!, data, selectedDisplayName)
+        HeroDetailKind.DEFAULT_SNAPSHOT ->
+            defaultRow!!.entry.remoteSnapshot!!.toMinerDetailUi(displayName = defaultRow.displayName)
+        HeroDetailKind.DEFAULT_LOCAL ->
+            localMinerDetailUi(defaultRow!!.entry.localProfile!!, null, defaultRow.displayName)
+        HeroDetailKind.NONE -> null
     }
     val heroSummary = heroDetail?.let { HeroSummary.from(it) }
     val heroEntry = when {
@@ -188,8 +212,12 @@ fun HomeScreen(
         profile != null -> activeEntry
         else -> defaultRow?.entry
     }
-    val heroSnapshot = effectiveRemote
-        ?: defaultRow?.entry?.remoteSnapshot?.takeIf { profile == null && selectedRemoteMiner == null }
+    val heroSnapshot = when (heroKind) {
+        HeroDetailKind.EXPLICIT_SNAPSHOT -> effectiveRemote
+        HeroDetailKind.PROFILE_SNAPSHOT -> activeEntry?.remoteSnapshot
+        HeroDetailKind.DEFAULT_SNAPSHOT -> defaultRow?.entry?.remoteSnapshot
+        else -> null
+    }
 
     // What Home renders (v0.3.3): while the first real fleet state
     // is still loading, skeletons only — the fleet merely *looks*

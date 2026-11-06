@@ -2,6 +2,7 @@ package com.example.antminerconnectiontest.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -26,16 +27,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.antminerconnectiontest.domain.model.HomeLoadState
 import com.example.antminerconnectiontest.domain.model.MergedMinerEntry
+import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.PhoneNicknames
+import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import com.example.antminerconnectiontest.domain.model.TabDataSource
 import com.example.antminerconnectiontest.domain.model.TabSource
 import com.example.antminerconnectiontest.theme.*
+import com.example.antminerconnectiontest.ui.components.FleetListCard
 import com.example.antminerconnectiontest.ui.components.MinerDetailUi
 import com.example.antminerconnectiontest.ui.components.MinerSwitcherBottomSheet
 import com.example.antminerconnectiontest.ui.components.NicknameEditDialog
@@ -66,7 +71,7 @@ private fun TabWithMachineHeader(
     detail: MinerDetailUi?,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    onEditNickname: (() -> Unit)?,
+    onSwitchMachine: (() -> Unit)?,
     content: @Composable () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -75,7 +80,7 @@ private fun TabWithMachineHeader(
                 detail = detail,
                 isRefreshing = isRefreshing,
                 onRefresh = onRefresh,
-                onEditNickname = onEditNickname,
+                onSwitchMachine = onSwitchMachine,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
         }
@@ -97,6 +102,10 @@ fun MainDashboardScreen(
     // the detail header pencil, and the Home header pencil all open this
     // one dialog for the tapped machine.
     var nicknameEditEntry by remember { mutableStateOf<MergedMinerEntry?>(null) }
+
+    // Machine switcher for the Hardware / Pools / Logs headers
+    // (v0.5.2): opened by tapping the header's machine identity.
+    var tabSwitcherOpen by remember { mutableStateOf(false) }
 
     // Refresh on return to the foreground when the dashboard is empty,
     // errored, or stale — instead of showing pre-sleep data indefinitely.
@@ -297,7 +306,7 @@ fun MainDashboardScreen(
                                 detail = tabDetail,
                                 isRefreshing = uiState.isRefreshing,
                                 onRefresh = viewModel::manualRefresh,
-                                onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
+                                onSwitchMachine = { tabSwitcherOpen = true }
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
                                     RemoteHardwareTab(
@@ -323,7 +332,7 @@ fun MainDashboardScreen(
                                 detail = tabDetail,
                                 isRefreshing = uiState.isRefreshing,
                                 onRefresh = viewModel::manualRefresh,
-                                onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
+                                onSwitchMachine = { tabSwitcherOpen = true }
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
                                     RemotePoolsTab(
@@ -348,7 +357,7 @@ fun MainDashboardScreen(
                                 detail = tabDetail,
                                 isRefreshing = uiState.isRefreshing,
                                 onRefresh = viewModel::manualRefresh,
-                                onEditNickname = tabEntry?.let { entry -> { nicknameEditEntry = entry } }
+                                onSwitchMachine = { tabSwitcherOpen = true }
                             ) {
                                 if (useCloudTabs || activeProfile == null) {
                                     // The selected machine's logs are
@@ -451,6 +460,33 @@ fun MainDashboardScreen(
                             onDismiss = {
                                 viewModel.toggleProfileSwitcher(false)
                             }
+                        )
+                    }
+
+                    // Machine switcher for the tab headers (v0.5.2):
+                    // the SAME fleet list Home shows — nickname large,
+                    // worker small, LIVE/REMOTE chip, hashrate/status.
+                    // Picking a machine rebinds Home and every tab to
+                    // it (the same selection a fleet-row tap makes)
+                    // and the user stays on the tab they are viewing.
+                    if (tabSwitcherOpen) {
+                        TabMachineSwitcherSheet(
+                            mergedMiners = mergedMiners,
+                            activeProfile = activeProfile,
+                            selectedRemoteMinerId = uiState.selectedRemoteMiner?.id,
+                            onSelectProfile = { profile ->
+                                tabSwitcherOpen = false
+                                viewModel.selectSavedProfile(profile)
+                            },
+                            onSelectRemoteMiner = { snapshot ->
+                                tabSwitcherOpen = false
+                                viewModel.selectRemoteMinerFromTabHeader(snapshot)
+                            },
+                            onAddNewMiner = {
+                                tabSwitcherOpen = false
+                                viewModel.openLocalSetup()
+                            },
+                            onDismiss = { tabSwitcherOpen = false }
                         )
                     }
                 }
@@ -617,6 +653,58 @@ private fun RowScope.DashboardNavItems(
         label = { Text("Settings") },
         colors = itemColors()
     )
+}
+
+/**
+ * The machine switcher opened from the Hardware / Pools / Logs
+ * headers (v0.5.2): a bottom sheet carrying the Home fleet list
+ * itself ([FleetListCard]), so the picker looks and behaves exactly
+ * like selecting a machine on Home — one row per machine, nickname
+ * large, worker small, the LIVE/REMOTE chip and the hashrate/status.
+ * Row selection follows the fleet list's own rule (snapshot-displayed
+ * machines select their snapshot, the rest their local profile);
+ * nickname editing is not offered here — it stays on the Home fleet
+ * rows and in Settings.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TabMachineSwitcherSheet(
+    mergedMiners: List<MergedMinerEntry>,
+    activeProfile: MinerProfile?,
+    selectedRemoteMinerId: String?,
+    onSelectProfile: (MinerProfile) -> Unit,
+    onSelectRemoteMiner: (RemoteMinerSnapshot) -> Unit,
+    onAddNewMiner: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Switch machine",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            FleetListCard(
+                mergedMiners = mergedMiners,
+                activeProfile = activeProfile,
+                selectedRemoteMinerId = selectedRemoteMinerId,
+                onSelectProfile = onSelectProfile,
+                onSelectRemoteMiner = onSelectRemoteMiner,
+                onAddNewMiner = onAddNewMiner,
+                onEditNickname = null
+            )
+        }
+    }
 }
 
 /**

@@ -64,6 +64,78 @@ object HomeLoadState {
     }
 }
 
+/** Which machine detail the Home hero renders (v0.5.2). */
+enum class HeroDetailKind {
+    /** The user explicitly selected a cloud snapshot, and no live local session for it has taken over. */
+    EXPLICIT_SNAPSHOT,
+
+    /**
+     * The selected machine was reached through its saved local profile,
+     * but only its cloud snapshot is available (no live session) — the
+     * hero shows the snapshot, REMOTE. This is the cold-open case.
+     */
+    PROFILE_SNAPSHOT,
+
+    /** The selected machine is the active local profile, shown from local data (live or attempting). */
+    PROFILE_LOCAL,
+
+    /** No explicit selection: the ranked fleet's first machine, from its snapshot. */
+    DEFAULT_SNAPSHOT,
+
+    /** No explicit selection: the ranked fleet's first machine, local-only. */
+    DEFAULT_LOCAL,
+
+    /** No machine at all — no hero. */
+    NONE
+}
+
+/**
+ * The hero-source decision (v0.5.2, user bug fix): the Home hero
+ * follows the MACHINE, not the selection path — the Home twin of the
+ * v0.5.1 tab fix ([TabSource]).
+ *
+ * Before this fix the hero keyed off `selectedRemoteMiner` alone: a
+ * machine selected through its saved local profile rendered from the
+ * local path even when its merged fleet entry already carried a fresh
+ * cloud snapshot. On cold open away from the miner's LAN (mobile data)
+ * the hero therefore sat blank — "-- TH/s", OFFLINE, "Health unknown",
+ * plus a "Could not connect" error card — while the fleet row directly
+ * below showed the same machine REMOTE at full hashrate, until the
+ * user tapped the row and re-selected the machine as a snapshot. The
+ * v0.2.1 fix had covered only explicit snapshot selections (it
+ * re-derived THOSE from the merged fleet); the profile-selected cold
+ * start was never covered.
+ *
+ * The rule, resolved from the selected machine's ONE merged fleet
+ * entry: an explicit snapshot selection wins unless a live local
+ * session for the same machine has superseded it; a profile-selected
+ * machine with a snapshot and no live session shows the snapshot;
+ * anything else keeps the local path exactly as before (including the
+ * error card when there is no data at all). Pure, so the rule is
+ * unit-testable without Compose.
+ */
+object HeroDetailChoice {
+
+    fun choose(
+        hasExplicitSnapshot: Boolean,
+        explicitSnapshotSupersededByLiveLocal: Boolean,
+        hasActiveProfile: Boolean,
+        profileLiveOnline: Boolean,
+        profileEntryHasSnapshot: Boolean,
+        defaultEntryHasSnapshot: Boolean,
+        defaultEntryHasProfile: Boolean
+    ): HeroDetailKind = when {
+        hasExplicitSnapshot && !explicitSnapshotSupersededByLiveLocal ->
+            HeroDetailKind.EXPLICIT_SNAPSHOT
+        hasActiveProfile && profileEntryHasSnapshot && !profileLiveOnline ->
+            HeroDetailKind.PROFILE_SNAPSHOT
+        hasActiveProfile -> HeroDetailKind.PROFILE_LOCAL
+        defaultEntryHasSnapshot -> HeroDetailKind.DEFAULT_SNAPSHOT
+        defaultEntryHasProfile -> HeroDetailKind.DEFAULT_LOCAL
+        else -> HeroDetailKind.NONE
+    }
+}
+
 /**
  * Everything the Home hero is allowed to show — and nothing else.
  *

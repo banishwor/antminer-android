@@ -2,6 +2,7 @@ package com.example.antminerconnectiontest.ui
 
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import com.example.antminerconnectiontest.domain.model.NeedsPasswordMachine
+import com.example.antminerconnectiontest.domain.model.RemoteMinerSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -496,6 +497,48 @@ class DashboardViewModelTest {
         val fresh = AppUiState()
         assertFalse(fresh.isInitialStateLoaded)
         assertFalse(fresh.hasCompletedFirstCloudFetch)
+    }
+
+    @Test
+    fun tabHeaderSwitcher_remotePick_keepsCurrentTab() {
+        // v0.5.2: a pick from the Hardware / Pools / Logs header
+        // switcher makes the same selection as a Home fleet-row pick
+        // but must NOT yank the user back to Home — every tab rebinds
+        // to the picked machine while the user stays where they are.
+        val viewModel = DashboardViewModel()
+        viewModel.selectDashboardTab(DashboardTab.POOLS)
+
+        val snapshot = RemoteMinerSnapshot(
+            user = "Master",
+            id = "banishwor.002",
+            nickname = "banishwor.002",
+            ip = "192.168.1.3",
+            hashrate5s = 123.5,
+            avgHashrate = 121.0,
+            maxTemp = 65,
+            maxFan = 6100,
+            status = "Online",
+            lastUpdated = "2026-11-06T12:30:00Z"
+        )
+        viewModel.selectRemoteMinerFromTabHeader(snapshot)
+
+        assertEquals(DashboardTab.POOLS, viewModel.uiState.value.selectedTab)
+        assertEquals(snapshot, viewModel.uiState.value.selectedRemoteMiner)
+    }
+
+    @Test
+    fun tabHeaderSwitcher_profilePick_keepsCurrentTab() {
+        // The profile half of the same rule (selectSavedProfile never
+        // moved tabs; pin it so the switcher contract can't regress).
+        val viewModel = DashboardViewModel()
+        viewModel.selectDashboardTab(DashboardTab.HARDWARE)
+
+        val profile = MinerProfile(id = "miner_A", host = "192.168.1.10", displayName = "Miner A")
+        viewModel.selectSavedProfile(profile)
+
+        assertEquals(DashboardTab.HARDWARE, viewModel.uiState.value.selectedTab)
+        assertEquals(profile, viewModel.uiState.value.activeProfile)
+        assertNull(viewModel.uiState.value.selectedRemoteMiner)
     }
 
     @Test
