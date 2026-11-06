@@ -62,6 +62,11 @@ import kotlin.concurrent.thread
  * every saved row shows the engine's latest per-miner outcome
  * (persisted in [LiteState]); and a found update can be downloaded
  * and installed in-app, still only ever from a tap.
+ *
+ * v0.1.3: the add form no longer demands login credentials — miners
+ * use root / root, so the fields live collapsed under Edit
+ * credentials (pre-filled, editable only on purpose) and the section
+ * opens itself when a connect attempt fails the login.
  */
 class MainActivity : Activity() {
 
@@ -74,6 +79,7 @@ class MainActivity : Activity() {
     private lateinit var hostField: EditText
     private lateinit var minerUserField: EditText
     private lateinit var minerPassField: EditText
+    private lateinit var minerCredsContainer: View
     private lateinit var profilesContainer: LinearLayout
     private lateinit var advancedDetail: TextView
     private lateinit var statusDot: View
@@ -156,6 +162,11 @@ class MainActivity : Activity() {
         hostField = findViewById(R.id.hostField)
         minerUserField = findViewById(R.id.minerUserField)
         minerPassField = findViewById(R.id.minerPassField)
+        minerCredsContainer = findViewById(R.id.minerCredsContainer)
+        // Credentials default to root / root (v0.1.3): pre-filled so
+        // the collapsed section is only ever opened to change them.
+        minerUserField.setText("root")
+        minerPassField.setText("root")
         profilesContainer = findViewById(R.id.profilesContainer)
         advancedDetail = findViewById(R.id.advancedDetail)
         statusDot = findViewById(R.id.statusDot)
@@ -198,6 +209,7 @@ class MainActivity : Activity() {
         downloadCancelButton.setOnClickListener { downloadCancelled = true }
         wireCollapsible(R.id.advancedToggle, R.id.advancedContainer)
         wireCollapsible(R.id.addMinerToggle, R.id.addMinerContainer)
+        wireCollapsible(R.id.minerCredsToggle, R.id.minerCredsContainer)
         wireCollapsible(R.id.setupToggle, R.id.setupContainer)
 
         checkUpdatesButton.setOnClickListener { checkForUpdates() }
@@ -373,6 +385,9 @@ class MainActivity : Activity() {
             }
             AddOutcome.WrongPassword -> {
                 setAddFormEnabled(true)
+                // Surface the credential fields right where they're
+                // needed (v0.1.3): the login is the thing to fix.
+                minerCredsContainer.visibility = View.VISIBLE
                 showAddResult("⚠ The miner answered but the login failed — check the password.")
                 pendingDismissIsCancel = false
                 addMinerDismissButton.text = "Edit"
@@ -418,7 +433,11 @@ class MainActivity : Activity() {
     private fun resetAddForm() {
         hostField.text.clear()
         workerField.text.clear()
-        minerPassField.text.clear()
+        // A finished attempt leaves no credential edits behind: the
+        // next add starts from root / root again, section collapsed.
+        minerUserField.setText("root")
+        minerPassField.setText("root")
+        minerCredsContainer.visibility = View.GONE
         setAddFormEnabled(true)
     }
 
