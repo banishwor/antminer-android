@@ -41,7 +41,15 @@ fun MinerDataStateCard(
     host: String,
     modifier: Modifier = Modifier,
     message: String? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    /**
+     * "Find moved miners" recovery scan (v0.5.4): when provided, the
+     * error/offline states offer it as a secondary action — the miner
+     * may simply have moved to a new IP (DHCP). Tap-initiated only.
+     */
+    onFindMovedMiners: (() -> Unit)? = null,
+    isFindingMovedMiners: Boolean = false,
+    movedMinerScanLines: List<String> = emptyList()
 ) {
     val isError = state == MinerDataState.ERROR
     val accent = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
@@ -134,6 +142,37 @@ fun MinerDataStateCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Retry", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (state != MinerDataState.LOADING && onFindMovedMiners != null) {
+                OutlinedButton(
+                    onClick = onFindMovedMiners,
+                    enabled = !isFindingMovedMiners
+                ) {
+                    if (isFindingMovedMiners) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Searching this Wi-Fi…", fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Find moved miners", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (state != MinerDataState.LOADING && movedMinerScanLines.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    movedMinerScanLines.forEach { line ->
+                        Text(
+                            text = line,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

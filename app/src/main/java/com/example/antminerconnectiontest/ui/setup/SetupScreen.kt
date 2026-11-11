@@ -254,6 +254,64 @@ fun SetupScreen(
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
                         )
                     }
+
+                    // "Find moved miners" (v0.5.4): the DHCP-recovery
+                    // scan for KNOWN miners whose address changed. Runs
+                    // only from this tap — never automatically.
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "A known miner moved to a new IP?",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = uiState.movedMinerScanProgress
+                                    ?: "Searches this Wi-Fi for your known miners and updates the one that moved. Unknown miners are ignored.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(
+                            onClick = viewModel::findMovedMiners,
+                            enabled = isWifi && !uiState.isFindingMovedMiners,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            if (uiState.isFindingMovedMiners) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(13.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Searching…", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Find moved miners", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    if (uiState.movedMinerScanLines.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            uiState.movedMinerScanLines.forEach { line ->
+                                Text(
+                                    text = line,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

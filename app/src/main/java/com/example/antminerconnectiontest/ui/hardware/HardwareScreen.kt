@@ -33,6 +33,10 @@ fun HardwareScreen(
     onManualRefresh: () -> Unit,
     dashboardError: String? = null,
     onRetry: (() -> Unit)? = null,
+    /** "Find moved miners" recovery scan (v0.5.4), forwarded to the state card. */
+    onFindMovedMiners: (() -> Unit)? = null,
+    isFindingMovedMiners: Boolean = false,
+    movedMinerScanLines: List<String> = emptyList(),
     /** Bottom dock clearance (v0.5.0): appended inside the scroll column. */
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
@@ -58,12 +62,18 @@ fun HardwareScreen(
                     state = MinerDataState.ERROR,
                     host = profile.host,
                     message = dashboardError,
-                    onRetry = onRetry ?: onManualRefresh
+                    onRetry = onRetry ?: onManualRefresh,
+                    onFindMovedMiners = onFindMovedMiners,
+                    isFindingMovedMiners = isFindingMovedMiners,
+                    movedMinerScanLines = movedMinerScanLines
                 )
                 else -> MinerDataStateCard(
                     state = MinerDataState.OFFLINE,
                     host = profile.host,
-                    onRetry = onRetry ?: onManualRefresh
+                    onRetry = onRetry ?: onManualRefresh,
+                    onFindMovedMiners = onFindMovedMiners,
+                    isFindingMovedMiners = isFindingMovedMiners,
+                    movedMinerScanLines = movedMinerScanLines
                 )
             }
             // Dock clearance (v0.5.0): the last section can scroll

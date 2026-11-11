@@ -85,6 +85,10 @@ fun HomeScreen(
     isRefreshing: Boolean,
     dashboardError: String? = null,
     onRetry: (() -> Unit)? = null,
+    /** "Find moved miners" recovery scan (v0.5.4), forwarded to the error state card. */
+    onFindMovedMiners: (() -> Unit)? = null,
+    isFindingMovedMiners: Boolean = false,
+    movedMinerScanLines: List<String> = emptyList(),
     onManualRefresh: () -> Unit,
     onOpenMinerSwitcher: () -> Unit,
     onSelectMinerProfile: (MinerProfile) -> Unit,
@@ -308,7 +312,10 @@ fun HomeScreen(
                             state = MinerDataState.ERROR,
                             host = profile.host,
                             message = dashboardError,
-                            onRetry = effectiveRetry
+                            onRetry = effectiveRetry,
+                            onFindMovedMiners = onFindMovedMiners,
+                            isFindingMovedMiners = isFindingMovedMiners,
+                            movedMinerScanLines = movedMinerScanLines
                         )
                     } else {
                         MinerDataStateCard(

@@ -271,6 +271,9 @@ fun MainDashboardScreen(
                                 isRefreshing = uiState.isRefreshing,
                                 dashboardError = uiState.dashboardError,
                                 onRetry = viewModel::manualRefresh,
+                                onFindMovedMiners = viewModel::findMovedMiners,
+                                isFindingMovedMiners = uiState.isFindingMovedMiners,
+                                movedMinerScanLines = uiState.movedMinerScanLines,
                                 onManualRefresh = viewModel::manualRefresh,
                                 onOpenMinerSwitcher = { viewModel.toggleProfileSwitcher(true) },
                                 onSelectMinerProfile = viewModel::selectSavedProfile,
@@ -322,6 +325,9 @@ fun MainDashboardScreen(
                                         onManualRefresh = viewModel::manualRefresh,
                                         dashboardError = uiState.dashboardError,
                                         onRetry = viewModel::manualRefresh,
+                                        onFindMovedMiners = viewModel::findMovedMiners,
+                                        isFindingMovedMiners = uiState.isFindingMovedMiners,
+                                        movedMinerScanLines = uiState.movedMinerScanLines,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }
@@ -347,6 +353,9 @@ fun MainDashboardScreen(
                                         onManualRefresh = viewModel::manualRefresh,
                                         dashboardError = uiState.dashboardError,
                                         onRetry = viewModel::manualRefresh,
+                                        onFindMovedMiners = viewModel::findMovedMiners,
+                                        isFindingMovedMiners = uiState.isFindingMovedMiners,
+                                        movedMinerScanLines = uiState.movedMinerScanLines,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }

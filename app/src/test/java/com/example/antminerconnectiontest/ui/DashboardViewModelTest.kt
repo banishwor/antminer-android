@@ -552,6 +552,20 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun findMovedMiners_noKnownMiners_reportsAndDoesNotScan() {
+        // v0.5.4: with nothing known there is nothing to look for — the
+        // operation reports in place and never starts a scan.
+        val viewModel = DashboardViewModel()
+        viewModel.findMovedMiners()
+        val state = viewModel.uiState.value
+        assertFalse(state.isFindingMovedMiners)
+        assertEquals(
+            listOf("No known miners to look for — add a miner first."),
+            state.movedMinerScanLines
+        )
+    }
+
+    @Test
     fun relayOnlyMode_enablingClosesSetupFlow() {
         val viewModel = DashboardViewModel()
         viewModel.openLocalSetup()

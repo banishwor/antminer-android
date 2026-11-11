@@ -83,6 +83,15 @@ data class AppUiState(
     val setupTab: SetupTab = SetupTab.MANUAL,
     val setupForm: SetupFormState = SetupFormState(),
     val scannerState: ScanProgress = ScanProgress(0, 0, "", false),
+    /**
+     * "Find moved miners" recovery scan (v0.5.4): runs ONLY from an
+     * explicit button tap. [isFindingMovedMiners] drives the buttons'
+     * progress/disabled state; [movedMinerScanLines] is the persistent
+     * in-place result summary (never just a toast).
+     */
+    val isFindingMovedMiners: Boolean = false,
+    val movedMinerScanProgress: String? = null,
+    val movedMinerScanLines: List<String> = emptyList(),
     val selectedScannerMiner: DiscoveredMiner? = null,
     val scannerUsernameInput: String = "root",
     val scannerPasswordInput: String = "root",
@@ -330,6 +339,7 @@ class DashboardViewModel(
     }
 
     private var scanJob: Job? = null
+    private var movedScanJob: Job? = null
     private var cloudSyncJob: Job? = null
     private var autoConnectJob: Job? = null
     private var lastAutoConnectMs: Long = 0L
@@ -1947,6 +1957,213 @@ class DashboardViewModel(
         scanJob = null
         _uiState.update {
             it.copy(scannerState = it.scannerState.copy(isScanning = false))
+        }
+    }
+
+    /**
+     * "Find moved miners" (v0.5.4) — the DHCP-recovery scan. Runs ONLY
+     * when the user taps the button (setup Scan area or the dashboard's
+     * couldn't-reach card). There is deliberately no other caller: no
+     * Wi-Fi hook, no timer, no relay cycle.
+     *
+     * Scans the current Wi-Fi subnet with the existing [NetworkScanner],
+     * verifies every responding Antminer, and lets [MovedMinerScan]
+     * decide: a known worker at a new address moves its saved profile
+     * there; a fleet-only worker is adopted like auto-connect; unknown
+     * or unverifiable miners are counted and ignored — never saved.
+     * Targets are the known miners NOT already verified live at their
+     * stored address; when there is nothing to look for, no scan runs.
+     */
+    fun findMovedMiners() {
+        if (movedScanJob?.isActive == true) return
+
+        val profiles = profileManager.savedProfiles.value
+        val snapshots = _uiState.value.remoteMiners
+        // saveOrUpdateProfile moves the profile manager's active pointer
+        // to whatever it saves; remember the user's miner so an address
+        // update for a DIFFERENT miner never steals the selection.
+        val previousActiveId = profileManager.getActiveProfile()?.id
+        val liveIdentities = mergedMiners.value
+            .filter { it.hasLiveLocalData || it.localHashrateTh != null }
+            .mapNotNull { entry ->
+                entry.localProfile?.workerName?.takeIf { w -> w.isNotBlank() }
+                    ?: entry.remoteSnapshot?.let { MinerMerge.workerIdentity(it) }
+            }
+            .toSet()
+        val targets = MovedMinerScan.buildTargets(profiles, snapshots, liveIdentities)
+
+        if (targets.isEmpty()) {
+            val anyKnown = profiles.any { it.workerName.isNotBlank() } ||
+                snapshots.any { MinerMerge.workerIdentity(it) != null }
+            _uiState.update {
+                it.copy(
+                    movedMinerScanLines = listOf(
+                        if (anyKnown) {
+                            "All known miners are already reachable."
+                        } else {
+                            "No known miners to look for — add a miner first."
+                        }
+                    )
+                )
+            }
+            return
+        }
+
+        if (!isWifiConnected()) {
+            _uiState.update {
+                it.copy(
+                    isWifiConnected = false,
+                    movedMinerScanLines = listOf(
+                        "Connect to the miners' Wi-Fi first, then tap Find moved miners again."
+                    )
+                )
+            }
+            return
+        }
+
+        movedScanJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isWifiConnected = true,
+                    isFindingMovedMiners = true,
+                    movedMinerScanProgress = "Scanning this Wi-Fi for Antminers…",
+                    movedMinerScanLines = emptyList()
+                )
+            }
+            try {
+                var discovered: List<DiscoveredMiner> = emptyList()
+                networkScanner.scanSubnet(context = getApplication()).collect { progress ->
+                    _uiState.update {
+                        it.copy(
+                            movedMinerScanProgress =
+                                "Scanning ${progress.scannedCount}/${progress.totalCount} addresses…"
+                        )
+                    }
+                    if (!progress.isScanning) discovered = progress.discoveredMiners
+                }
+
+                // Credentials to try per responder: the default first
+                // (every miner this app manages uses it unless a saved
+                // profile says otherwise), then each target profile's
+                // own saved set — bounded and never guessed beyond that.
+                val credentialAttempts = buildList {
+                    add(AutoConnect.DEFAULT_USERNAME to AutoConnect.DEFAULT_PASSWORD)
+                    targets.mapNotNull { it.profile }.forEach { profile ->
+                        add(
+                            profile.username.ifBlank { AutoConnect.DEFAULT_USERNAME } to
+                                profile.password.ifBlank { AutoConnect.DEFAULT_PASSWORD }
+                        )
+                    }
+                }.distinct()
+
+                val lines = mutableListOf<String>()
+                val resolvedIdentities = mutableSetOf<String>()
+                var unknownCount = 0
+                var unverifiedCount = 0
+                var changedAny = false
+                var activeProfileMoved = false
+
+                for (miner in discovered) {
+                    var verification: com.example.antminerconnectiontest.data.scanner.MinerVerificationResult? = null
+                    var usedUsername = AutoConnect.DEFAULT_USERNAME
+                    for ((user, pass) in credentialAttempts) {
+                        val result = detector.verifyMinerWithCredentials(miner.ip, user, pass)
+                        if (result.isConfirmed) {
+                            verification = result
+                            usedUsername = user
+                            break
+                        }
+                    }
+                    val verified = verification
+                    if (verified == null) {
+                        // An Antminer signature answered but no known
+                        // credential set could log in: identity unproven.
+                        unverifiedCount++
+                        continue
+                    }
+
+                    when (val decision = MovedMinerScan.decide(
+                        targets,
+                        MovedMinerScan.VerifiedResponder(miner.ip, verified.workerName)
+                    )) {
+                        is MovedMinerScan.Decision.UpdateProfile -> {
+                            val profile = decision.target.profile!!
+                            profileManager.saveOrUpdateProfile(
+                                profile.copy(host = decision.newIp)
+                            )
+                            resolvedIdentities += decision.target.identity
+                            changedAny = true
+                            if (_uiState.value.activeProfile?.id == profile.id) {
+                                activeProfileMoved = true
+                            }
+                            lines += "Found ${decision.target.identityRaw} at ${decision.newIp} — address updated"
+                        }
+                        is MovedMinerScan.Decision.AdoptFleet -> {
+                            val target = decision.target
+                            adoptAutoConnected(
+                                AutoConnectCandidate(
+                                    identity = target.identity,
+                                    identityRaw = target.identityRaw,
+                                    ip = decision.ip,
+                                    savedProfile = null,
+                                    snapshot = target.snapshot,
+                                    sheetOwner = target.snapshot?.user?.trim().orEmpty()
+                                ),
+                                decision.ip,
+                                usedUsername,
+                                verified
+                            )
+                            resolvedIdentities += target.identity
+                            changedAny = true
+                            lines += "Found ${target.identityRaw} at ${decision.ip} — added to this phone"
+                        }
+                        is MovedMinerScan.Decision.AlreadyCorrect -> {
+                            resolvedIdentities += decision.target.identity
+                            lines += "${decision.target.identityRaw} is already at ${decision.target.storedIp} — no change needed"
+                        }
+                        is MovedMinerScan.Decision.IgnoredUnknown -> unknownCount++
+                        MovedMinerScan.Decision.IgnoredUnverified -> unverifiedCount++
+                    }
+                }
+
+                for (target in targets) {
+                    if (target.identity !in resolvedIdentities) {
+                        lines += "${target.identityRaw} not found on this Wi-Fi"
+                    }
+                }
+                if (unknownCount > 0) {
+                    lines += "$unknownCount unknown miner${if (unknownCount == 1) "" else "s"} ignored"
+                }
+                if (unverifiedCount > 0) {
+                    lines += "$unverifiedCount miner${if (unverifiedCount == 1) "" else "s"} couldn't be verified and ${if (unverifiedCount == 1) "was" else "were"} ignored"
+                }
+                if (lines.isEmpty()) {
+                    lines += "No Antminers answered on this Wi-Fi."
+                }
+
+                _uiState.update { it.copy(movedMinerScanLines = lines) }
+
+                if (changedAny) {
+                    // Refresh so a found miner flips LIVE, and sync so
+                    // the sheet learns the new address on the next
+                    // relay cycle.
+                    if (activeProfileMoved) {
+                        profileManager.getActiveProfile()?.let { selectSavedProfile(it) }
+                    } else {
+                        if (previousActiveId != null &&
+                            profileManager.getActiveProfile()?.id != previousActiveId
+                        ) {
+                            profileManager.selectProfile(previousActiveId)
+                        }
+                        viewModelScope.launch { repository.refreshDashboardData() }
+                    }
+                    syncCloudNow()
+                }
+            } finally {
+                _uiState.update {
+                    it.copy(isFindingMovedMiners = false, movedMinerScanProgress = null)
+                }
+            }
         }
     }
 
