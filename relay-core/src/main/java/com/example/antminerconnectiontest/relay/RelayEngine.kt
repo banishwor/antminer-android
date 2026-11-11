@@ -9,6 +9,7 @@ import com.example.antminerconnectiontest.data.scanner.MinerVerificationResult
 import com.example.antminerconnectiontest.domain.model.AutoConnect
 import com.example.antminerconnectiontest.domain.model.AutoConnectCandidate
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
+import com.example.antminerconnectiontest.domain.model.LiveIdentity
 import com.example.antminerconnectiontest.domain.model.MinerMerge
 import com.example.antminerconnectiontest.domain.model.MinerPool
 import com.example.antminerconnectiontest.domain.model.MinerProfile
@@ -139,7 +140,26 @@ class RelayEngine(
                             val maxTemp = stats?.maxChipTemp ?: 0
                             val maxFan = stats?.maxFanRpm ?: 0
 
-                            if (rate5s > 0.0 || avgRate > 0.0) {
+                            // Identity gate (v0.5.3): the profile's
+                            // address is only a hint — at another site a
+                            // DIFFERENT miner can answer there (private
+                            // IPs repeat across sites). When the profile
+                            // knows its worker, the pools this endpoint
+                            // just returned must prove the answering
+                            // machine IS that worker before any telemetry
+                            // is uploaded or reported under the profile's
+                            // identity; an unproven poll is deferred and
+                            // the profile's own machine counts as not
+                            // answering. A profile that has not learned
+                            // its worker yet resolves it from these same
+                            // pools (see resolveSheetId).
+                            val identityProven =
+                                LiveIdentity.decide(profile.workerName, pools).isProven
+
+                            if (!identityProven) {
+                                deferredCount++
+                                outcome = MinerPollOutcome(MinerPollState.UNREACHABLE)
+                            } else if (rate5s > 0.0 || avgRate > 0.0) {
                                 outcome = MinerPollOutcome(MinerPollState.CONNECTED, rate5s)
                                 // Machine identity = the worker
                                 // username, resolved before the

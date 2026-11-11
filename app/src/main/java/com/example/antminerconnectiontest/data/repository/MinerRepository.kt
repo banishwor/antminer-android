@@ -168,6 +168,49 @@ class MinerRepository(
             recordFailure("Chart", chartRes)
             recordFailure("System info", sysInfoRes)
 
+            // Identity gate (v0.5.3): a private IP is only an address
+            // hint — at another site a DIFFERENT miner can answer at
+            // this profile's address (private IPs repeat across sites)
+            // with a different pool worker. When the profile knows its
+            // worker, the freshly fetched pools must prove the answering
+            // machine IS that worker before any of its summary / stats /
+            // pools / chart is published as this profile's live data.
+            // On a mismatch — or when identity cannot be proven from
+            // fresh pools (a stale fallback must never vouch for the
+            // endpoint) — publish an offline state for this profile
+            // instead, so the merged fleet falls back to the machine's
+            // remote snapshot.
+            if (MinerMerge.normalizeWorkerName(profile.workerName).isNotBlank()) {
+                val freshPools = poolsRes.getOrNull()
+                val verdict = if (freshPools == null) {
+                    LiveIdentity.Verdict(LiveIdentity.Decision.UNVERIFIED, null)
+                } else {
+                    LiveIdentity.decide(profile.workerName, freshPools)
+                }
+                if (!verdict.isProven) {
+                    val reason = when (verdict.decision) {
+                        LiveIdentity.Decision.MISMATCH ->
+                            "Identity mismatch: the miner at ${profile.host} is " +
+                                "${verdict.actualWorker}, not ${profile.workerName.trim()} — showing remote data instead"
+                        else ->
+                            "Identity not verified: could not read the pool worker of the miner at " +
+                                "${profile.host} to confirm it is ${profile.workerName.trim()} — showing remote data instead"
+                    }
+                    if (!isCurrentGeneration(generation, profile.id)) {
+                        return@withContext Result.failure(
+                            IllegalStateException("Refresh superseded by a miner switch")
+                        )
+                    }
+                    _dashboardData.value = MinerDashboardData(
+                        profileId = profile.id,
+                        isOnline = false,
+                        partialErrors = listOf(reason)
+                    )
+                    _dashboardError.value = reason
+                    return@withContext Result.failure(Exception(reason))
+                }
+            }
+
             // Fall back to the previously fetched system info when available.
             val sysInfo = sysInfoRes.getOrNull() ?: previousData?.systemInfo
 

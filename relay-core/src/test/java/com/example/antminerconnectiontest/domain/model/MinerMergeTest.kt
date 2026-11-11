@@ -93,8 +93,10 @@ class MinerMergeTest {
     fun ipFallbackMatchesLegacyRowWithUserNickname() {
         // Legacy row: uploader had a free-form nickname, so no worker name
         // is recoverable — the unambiguous IP pairing is the fallback.
+        // (The id is a real per-device UUID, so the row provably carries
+        // no worker identity.)
         val local = profile(id = "p1", workerName = "banishwor.001", host = "192.168.1.42")
-        val remote = snapshot(id = "a7f3-uuid", nickname = "Nepra #1", ip = "192.168.1.42")
+        val remote = snapshot(id = "a7f3c1d2-1111-4222-8333-444455556666", nickname = "Nepra #1", ip = "192.168.1.42")
 
         val entries = MinerMerge.merge(listOf(local), listOf(remote))
 
@@ -108,7 +110,7 @@ class MinerMergeTest {
         // sites): the fallback must not guess.
         val a = profile(id = "pa", workerName = "banishwor.001", host = "192.168.1.42")
         val b = profile(id = "pb", workerName = "banishwor.002", host = "192.168.1.42")
-        val remote = snapshot(id = "a7f3-uuid", nickname = "Nepra #1", ip = "192.168.1.42")
+        val remote = snapshot(id = "a7f3c1d2-1111-4222-8333-444455556666", nickname = "Nepra #1", ip = "192.168.1.42")
 
         val entries = MinerMerge.merge(listOf(a, b), listOf(remote))
 
@@ -129,6 +131,64 @@ class MinerMergeTest {
         assertEquals(2, entries.size)
         val merged = entries.first { it.isMerged }
         assertEquals("p2", merged.localProfile?.id)
+    }
+
+    // --- Regression: cross-site private-IP collision (v0.5.3) ----------
+    // banishwor.001 (Sabaltongba) and bishambhor.001 (Bishambhor's site)
+    // are different machines that both sit at 192.168.1.2 on their own
+    // networks. Neither the merge nor the local-match lookup may ever
+    // pair one machine's profile with the other's snapshot just because
+    // the address matches.
+
+    @Test
+    fun sameIpDifferentKnownWorkers_pairOnlyWithOwnSnapshot() {
+        val local = profile(id = "p1", workerName = "banishwor.001", host = "192.168.1.2")
+        val mine = snapshot(id = "banishwor.001", nickname = "banishwor.001", ip = "192.168.1.2", hashrate5s = 100.0)
+        val theirs = snapshot(
+            id = "bishambhor.001", nickname = "bishambhor.001", ip = "192.168.1.2",
+            user = "bishambhor", hashrate5s = 122.0
+        )
+
+        val entries = MinerMerge.merge(listOf(local), listOf(mine, theirs))
+
+        assertEquals(2, entries.size)
+        val merged = entries.first { it.isMerged }
+        assertEquals("p1", merged.localProfile?.id)
+        assertEquals("banishwor.001", merged.remoteSnapshot?.id)
+        val remoteOnly = entries.first { it.localProfile == null }
+        assertEquals("bishambhor.001", remoteOnly.remoteSnapshot?.id)
+        // No live overlay leaks onto the remote-only machine.
+        assertNull(remoteOnly.localHashrateTh)
+        assertFalse(remoteOnly.hasLiveLocalData)
+    }
+
+    @Test
+    fun knownWorkerRowAtSharedIp_neverIpPairsWithDifferentKnownProfile() {
+        // Only bishambhor.001's row is in the sheet right now. The
+        // banishwor.001 profile is the ONLY local profile at
+        // 192.168.1.2, so the old unambiguous-IP fallback paired them —
+        // handing bishambhor's snapshot (and, with a live poll, its
+        // telemetry) to the banishwor entry. The row proves its worker
+        // identity, so it must stay a separate remote-only entry.
+        val local = profile(id = "p1", workerName = "banishwor.001", host = "192.168.1.2")
+        val theirs = snapshot(
+            id = "bishambhor.001", nickname = "bishambhor.001", ip = "192.168.1.2",
+            user = "bishambhor", hashrate5s = 122.0
+        )
+
+        val entries = MinerMerge.merge(listOf(local), listOf(theirs))
+
+        assertEquals(2, entries.size)
+        assertFalse(entries.any { it.isMerged })
+        assertEquals("bishambhor.001", entries.first { it.localProfile == null }.remoteSnapshot?.id)
+    }
+
+    @Test
+    fun findLocalMatch_differentKnownWorkerAtSameIp_returnsNull() {
+        val p1 = profile(id = "p1", workerName = "banishwor.001", host = "192.168.1.2")
+        val theirs = snapshot(id = "bishambhor.001", nickname = "bishambhor.001", ip = "192.168.1.2")
+
+        assertNull(MinerMerge.findLocalMatch(theirs, listOf(p1)))
     }
 
     @Test
@@ -334,7 +394,10 @@ class MinerMergeTest {
         )
         assertEquals(
             "p1",
-            MinerMerge.findLocalMatch(snapshot(id = "uuid", nickname = "Nepra", ip = "192.168.1.10"), listOf(p1, p2))?.id
+            MinerMerge.findLocalMatch(
+                snapshot(id = "123e4567-e89b-12d3-a456-426614174000", nickname = "Nepra", ip = "192.168.1.10"),
+                listOf(p1, p2)
+            )?.id
         )
         assertNull(MinerMerge.findLocalMatch(snapshot(id = "nobody.001", ip = "10.9.9.9"), listOf(p1, p2)))
     }

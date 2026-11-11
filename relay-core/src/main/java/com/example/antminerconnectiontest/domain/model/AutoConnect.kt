@@ -102,11 +102,15 @@ object AutoConnect {
      * the sheet owner. Rows whose worker identity cannot be proven are
      * skipped: with no identity there is nothing to verify a probe
      * against, and the known-only rule forbids adding unverifiable
-     * machines. The result is deduplicated by worker identity first,
-     * then by IP (profile-backed candidates win an IP — they carry
-     * credentials; a fleet machine displaced by an IP collision is still
-     * reachable through classification, see
-     * [ProbeClass.DIFFERENT_KNOWN_MACHINE]).
+     * machines. The result is deduplicated by worker identity ONLY —
+     * never by IP (v0.5.3): an IP is an address, not an identity, and
+     * several known machines legitimately share one across sites
+     * (banishwor.001 and bishambhor.001 both at 192.168.1.2). Dropping
+     * the second identity at a shared address made it undiscoverable —
+     * the probe classification never saw it in the known-identity set
+     * and called its machine "unknown". Every distinct identity stays
+     * a candidate, so a probe answer can always be routed to the
+     * machine it actually proves (see [ProbeClass.DIFFERENT_KNOWN_MACHINE]).
      *
      * Order is deterministic: profile-backed candidates in saved order,
      * then fleet-only candidates in sheet order.
@@ -157,18 +161,17 @@ object AutoConnect {
             )
         }
 
-        // Dedupe by identity, then by IP — first candidate wins (the
-        // list is already ordered profile-backed first).
+        // Dedupe by identity only — first candidate wins (the list is
+        // already ordered profile-backed first). Two candidates may
+        // share an IP: they are different machines at different sites,
+        // and each must stay discoverable so a probe of that address
+        // can be claimed by whichever identity actually answers.
         val seenIdentities = mutableSetOf<String>()
-        val seenIps = mutableSetOf<String>()
         val out = mutableListOf<AutoConnectCandidate>()
         for (candidate in raw) {
             if (candidate.ip.isBlank() && candidate.alternateIp.isNullOrBlank()) continue
-            if (candidate.identity.isNotBlank() && candidate.identity in seenIdentities) continue
-            val primaryIp = candidate.probeIps.firstOrNull() ?: continue
-            if (primaryIp in seenIps) continue
-            if (candidate.identity.isNotBlank()) seenIdentities += candidate.identity
-            seenIps += primaryIp
+            if (candidate.probeIps.isEmpty()) continue
+            if (candidate.identity.isNotBlank() && !seenIdentities.add(candidate.identity)) continue
             out += candidate
         }
         return out

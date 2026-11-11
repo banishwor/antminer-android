@@ -61,6 +61,65 @@ class MinerProfileManagerTest {
     }
 
     @Test
+    fun sameIpSameDefaultLocation_differentWorkers_neverMerge() {
+        // v0.5.3 regression, the exact cross-site collision: banishwor.001
+        // (Sabaltongba) and bishambhor.001 (Bishambhor's site) are
+        // different machines at the SAME private IP, both under the
+        // default location. The old host + location match merged the
+        // second save into the first profile and overwrote its worker
+        // identity. They must coexist as two profiles, untouched.
+        val manager = MinerProfileManager()
+        val sabaltongba = MinerProfile(
+            id = "uuid-banishwor",
+            workerName = "banishwor.001",
+            displayName = "Antminer S19k Pro",
+            location = "Default Location",
+            host = "192.168.1.2"
+        )
+        val bishambhor = MinerProfile(
+            id = "uuid-bishambhor",
+            workerName = "bishambhor.001",
+            displayName = "Antminer S19j Pro",
+            location = "Default Location",
+            host = "192.168.1.2"
+        )
+
+        manager.saveOrUpdateProfile(sabaltongba)
+        manager.saveOrUpdateProfile(bishambhor)
+
+        assertEquals(2, manager.savedProfiles.value.size)
+        val savedBanishwor = manager.savedProfiles.value.first { it.id == "uuid-banishwor" }
+        val savedBishambhor = manager.savedProfiles.value.first { it.id == "uuid-bishambhor" }
+        assertEquals("banishwor.001", savedBanishwor.workerName)
+        assertEquals("Antminer S19k Pro", savedBanishwor.displayName)
+        assertEquals("bishambhor.001", savedBishambhor.workerName)
+        assertEquals("Antminer S19j Pro", savedBishambhor.displayName)
+        assertEquals("192.168.1.2", savedBanishwor.host)
+        assertEquals("192.168.1.2", savedBishambhor.host)
+    }
+
+    @Test
+    fun workerNameMatching_isCaseInsensitive_andStillUpdatesIp() {
+        // Same worker under a different case must still be recognised
+        // as the same machine (DHCP move), not a second profile.
+        val manager = MinerProfileManager()
+        manager.saveOrUpdateProfile(
+            MinerProfile(
+                id = "uuid-1",
+                workerName = "banishwor.001",
+                location = "Farm A",
+                host = "192.168.1.102"
+            )
+        )
+        manager.saveOrUpdateProfile(
+            MinerProfile(workerName = "  Banishwor.001 ", host = "192.168.1.145")
+        )
+
+        assertEquals(1, manager.savedProfiles.value.size)
+        assertEquals("192.168.1.145", manager.savedProfiles.value.first().host)
+    }
+
+    @Test
     fun workerNameMatching_updatesIpAndPreservesNickname() {
         val manager = MinerProfileManager()
         val original = MinerProfile(

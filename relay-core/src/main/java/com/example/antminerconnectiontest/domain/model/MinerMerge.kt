@@ -201,6 +201,13 @@ object MinerMerge {
                 worker.isNotBlank() && worker in candidates
             }?.let { return it }
         }
+        // The IP fallback is for identity-less legacy rows ONLY
+        // (v0.5.3): when the snapshot carries a provable worker identity
+        // that no profile matched above, it is a DIFFERENT machine —
+        // pairing it with the one profile that happens to share its
+        // (cross-site, reused) IP would hand that machine's snapshot to
+        // the wrong profile.
+        if (workerIdentity(snapshot) != null) return null
         val ip = snapshot.ip.trim()
         if (ip.isNotBlank()) {
             val byIp = profiles.filter { it.host.trim() == ip }
@@ -237,7 +244,12 @@ object MinerMerge {
         }
 
         // 3) IP fallback for legacy rows, only when the pairing is
-        //    unambiguous on both sides (private IPs repeat across sites).
+        //    unambiguous on both sides (private IPs repeat across sites)
+        //    AND the row carries no provable worker identity (v0.5.3):
+        //    a row that proves a worker identity either matched its
+        //    profile in step 2 or belongs to a different machine — an
+        //    address must never pair it with a profile whose known
+        //    identity failed to match.
         for (profile in profiles) {
             if (snapshotForProfile.containsKey(profile.id)) continue
             val host = profile.host.trim()
@@ -245,7 +257,8 @@ object MinerMerge {
             val profilesWithHost = profiles.count { it.host.trim() == host }
             if (profilesWithHost != 1) continue
             val candidateIdx = uniqueList.indices.filter { i ->
-                i !in claimedSnapshotIdx && uniqueList[i].ip.trim() == host
+                i !in claimedSnapshotIdx && uniqueList[i].ip.trim() == host &&
+                    workerIdentity(uniqueList[i]) == null
             }
             if (candidateIdx.size == 1) {
                 claimedSnapshotIdx += candidateIdx.first()

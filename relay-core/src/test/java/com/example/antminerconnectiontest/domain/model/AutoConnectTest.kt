@@ -124,16 +124,95 @@ class AutoConnectTest {
     }
 
     @Test
-    fun candidates_sameIpDifferentMachines_profileBackedWinsTheIp() {
-        // The fleet machine sharing the IP is displaced as a candidate
-        // (the saved profile's credentials own the probe) — it remains
-        // reachable through DIFFERENT_KNOWN_MACHINE classification.
+    fun candidates_sameIpDifferentWorkers_bothRemainCandidates() {
+        // v0.5.3 regression: banishwor.001 (saved, Sabaltongba) and
+        // bishambhor.001 (fleet row) share 192.168.1.2 across sites.
+        // The candidate set used to dedupe by IP and drop bishambhor.001
+        // entirely — the consumers' known-identity set then lacked it,
+        // so when its machine answered at that address it was classified
+        // UNKNOWN_MACHINE and could never be claimed. Both identities
+        // must stay candidates; the probe answer decides which one is
+        // physically present.
         val candidates = AutoConnect.buildCandidates(
             profiles = listOf(profile("banishwor.001", "192.168.1.2")),
-            snapshots = listOf(snapshot(id = "bishambhor.001", ip = "192.168.1.2"))
+            snapshots = listOf(
+                snapshot(id = "banishwor.001", ip = "192.168.1.2"),
+                snapshot(id = "bishambhor.001", ip = "192.168.1.2")
+            )
         )
-        assertEquals(1, candidates.size)
-        assertEquals("banishwor.001", candidates.single().identity)
+        assertEquals(2, candidates.size)
+        assertEquals(
+            setOf("banishwor.001", "bishambhor.001"),
+            candidates.map { it.identity }.toSet()
+        )
+        // Deterministic order: profile-backed candidate first.
+        assertEquals("banishwor.001", candidates.first().identity)
+        assertTrue(candidates.first().savedProfile != null)
+    }
+
+    @Test
+    fun sameIp_atBishambhorSite_bishambhorAnswerIsRoutedToBishambhorCandidate() {
+        // At Bishambhor's place the phone probes the saved banishwor.001
+        // candidate at 192.168.1.2; the machine there proves it is
+        // bishambhor.001. With the full candidate set the answer is a
+        // DIFFERENT_KNOWN_MACHINE and the consumers' identity lookup
+        // finds the bishambhor.001 candidate to adopt — while
+        // banishwor.001 itself stays remote-only.
+        val candidates = AutoConnect.buildCandidates(
+            profiles = listOf(profile("banishwor.001", "192.168.1.2")),
+            snapshots = listOf(
+                snapshot(id = "banishwor.001", ip = "192.168.1.2"),
+                snapshot(id = "bishambhor.001", ip = "192.168.1.2")
+            )
+        )
+        val knownIdentities = candidates.map { it.identity }.toSet()
+        val probed = candidates.first { it.identity == "banishwor.001" }
+
+        assertEquals(
+            ProbeClass.DIFFERENT_KNOWN_MACHINE,
+            AutoConnect.classify(probed, resolvedIdentity = "bishambhor.001", knownIdentities)
+        )
+        val routed = candidates.firstOrNull {
+            it.identity == MinerMerge.normalizeWorkerName("bishambhor.001")
+        }
+        assertTrue(routed != null)
+        assertEquals("bishambhor.001", routed!!.identity)
+        // And probing the bishambhor candidate itself is a plain MATCH.
+        assertEquals(
+            ProbeClass.MATCH,
+            AutoConnect.classify(routed, resolvedIdentity = "bishambhor.001", knownIdentities)
+        )
+    }
+
+    @Test
+    fun sameIp_atSabaltongbaSite_banishworAnswerIsRoutedToBanishworCandidate() {
+        // Reverse direction: an earlier visit saved a bishambhor.001
+        // profile at 192.168.1.2; back at Sabaltongba the machine at
+        // 192.168.1.2 proves it is banishwor.001, which must route to
+        // the banishwor.001 candidate, not the probed profile.
+        val candidates = AutoConnect.buildCandidates(
+            profiles = listOf(profile("bishambhor.001", "192.168.1.2")),
+            snapshots = listOf(
+                snapshot(id = "bishambhor.001", ip = "192.168.1.2"),
+                snapshot(id = "banishwor.001", ip = "192.168.1.2")
+            )
+        )
+        assertEquals(2, candidates.size)
+        val knownIdentities = candidates.map { it.identity }.toSet()
+        val probed = candidates.first { it.identity == "bishambhor.001" }
+
+        assertEquals(
+            ProbeClass.DIFFERENT_KNOWN_MACHINE,
+            AutoConnect.classify(probed, resolvedIdentity = "banishwor.001", knownIdentities)
+        )
+        val routed = candidates.firstOrNull {
+            it.identity == MinerMerge.normalizeWorkerName("banishwor.001")
+        }
+        assertTrue(routed != null)
+        assertEquals(
+            ProbeClass.MATCH,
+            AutoConnect.classify(routed!!, resolvedIdentity = "Banishwor.001", knownIdentities)
+        )
     }
 
     // ---- classification of a successful probe ----

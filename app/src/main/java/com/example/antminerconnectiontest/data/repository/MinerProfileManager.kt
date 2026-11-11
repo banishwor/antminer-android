@@ -1,6 +1,7 @@
 package com.example.antminerconnectiontest.data.repository
 
 import com.example.antminerconnectiontest.data.storage.MinerStorageManager
+import com.example.antminerconnectiontest.domain.model.MinerMerge
 import com.example.antminerconnectiontest.domain.model.MinerProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,11 +38,33 @@ class MinerProfileManager(
     fun saveOrUpdateProfile(profile: MinerProfile) {
         var mergedId = profile.id
         _savedProfiles.update { currentList ->
-            // Match by workerName (if non-blank), unique ID, or (host + location)
-            val existingIndex = currentList.indexOfFirst {
-                (profile.workerName.isNotBlank() && it.workerName.isNotBlank() && it.workerName == profile.workerName) ||
-                it.id == profile.id ||
-                (it.host == profile.host && it.location == profile.location)
+            // Match by unique ID, by workerName, or — only when NEITHER
+            // side knows a worker name — by (host + location).
+            //
+            // Identity safeguard (v0.5.3): when both profiles carry
+            // non-blank worker names and they DIFFER, they are different
+            // machines and must NEVER merge — not even via the common
+            // host + "Default Location" pair. Private IPs repeat across
+            // sites (banishwor.001 and bishambhor.001 can both live at
+            // 192.168.1.2), so an address must never override a proven
+            // worker identity. Worker comparisons are normalised
+            // (trim + case-insensitive), so a DHCP move of the same
+            // worker still merges and updates the address.
+            val incomingWorker = MinerMerge.normalizeWorkerName(profile.workerName)
+            val existingIndex = currentList.indexOfFirst { existing ->
+                val existingWorker = MinerMerge.normalizeWorkerName(existing.workerName)
+                when {
+                    existing.id == profile.id -> true
+                    incomingWorker.isNotBlank() && existingWorker.isNotBlank() ->
+                        incomingWorker == existingWorker
+                    incomingWorker.isBlank() && existingWorker.isBlank() ->
+                        existing.host == profile.host && existing.location == profile.location
+                    // Exactly one side knows its worker: the known
+                    // identity cannot be contradicted by an address, and
+                    // the anonymous side cannot vouch for the machine —
+                    // no merge.
+                    else -> false
+                }
             }
             if (existingIndex >= 0) {
                 val existing = currentList[existingIndex]
