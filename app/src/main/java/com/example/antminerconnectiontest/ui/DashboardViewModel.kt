@@ -70,6 +70,16 @@ data class DailyAnalysisUiState(
     val errorMessage: String? = null
 )
 
+/** One saved miner's manual identity-check state (v0.5.7). */
+data class IdentityCheckUi(
+    val status: Status,
+    val message: String,
+    /** The worker the miner proved; set only for MISMATCH (the rename offer). */
+    val actualWorker: String? = null
+) {
+    enum class Status { CHECKING, MATCH, MISMATCH, UNREACHABLE, RENAMED }
+}
+
 data class AppUiState(
     val activeProfile: MinerProfile? = null,
     val savedProfiles: List<MinerProfile> = emptyList(),
@@ -86,6 +96,12 @@ data class AppUiState(
      */
     val identityMismatch: com.example.antminerconnectiontest.domain.model.LiveIdentity.Mismatch? = null,
     val identityRenameMessage: String? = null,
+    /**
+     * Manual identity checks (v0.5.7, Settings → Miner identity check):
+     * per saved profile, the persistent result of the user's last
+     * Check tap for that miner.
+     */
+    val identityChecks: Map<String, IdentityCheckUi> = emptyMap(),
     val activeAlerts: List<MinerAlert> = emptyList(),
     val isRefreshing: Boolean = false,
     val selectedTab: DashboardTab = DashboardTab.HOME,
@@ -1670,23 +1686,48 @@ class DashboardViewModel(
      * renaming would let a different person's miner at the same private
      * IP (another site) silently steal the profile (see v0.5.3).
      */
+    /** Dashboard mismatch entry point: rename the active profile to its proven new worker. */
     fun useNewWorkerName() {
         val mismatch = _uiState.value.identityMismatch ?: return
-        val newWorker = mismatch.actualWorker.trim()
-        if (newWorker.isBlank()) return
+        renameWorkerForProfile(mismatch.profileId, mismatch.expectedWorker, mismatch.actualWorker)
+    }
 
-        if (profileManager.isWorkerNameTakenByOther(mismatch.profileId, newWorker)) {
+    /**
+     * The shared tap-to-rename action (v0.5.5, generalised v0.5.7):
+     * called from the dashboard mismatch button AND from Settings →
+     * Miner identity check. [expectedWorker] is the profile's saved
+     * worker (blank when none is saved yet); [newWorkerRaw] is the
+     * worker the miner itself proved. Results land in
+     * [AppUiState.identityRenameMessage] and in the profile's
+     * [AppUiState.identityChecks] entry, in place.
+     */
+    fun renameWorkerForProfile(profileId: String, expectedWorker: String, newWorkerRaw: String) {
+        val newWorker = newWorkerRaw.trim()
+        if (newWorker.isBlank()) return
+        val renamedLabel = if (expectedWorker.isBlank()) {
+            "Saved $newWorker as this miner's name"
+        } else {
+            "Renamed $expectedWorker → $newWorker"
+        }
+
+        if (profileManager.isWorkerNameTakenByOther(profileId, newWorker)) {
+            val takenMessage =
+                "Another saved miner already uses $newWorker — rename not applied. " +
+                    "Remove that entry first if it is a duplicate."
             _uiState.update {
                 it.copy(
-                    identityRenameMessage =
-                        "Another saved miner already uses $newWorker — rename not applied. " +
-                            "Remove that entry first if it is a duplicate."
+                    identityRenameMessage = takenMessage,
+                    identityChecks = it.identityChecks + (profileId to IdentityCheckUi(
+                        status = IdentityCheckUi.Status.MISMATCH,
+                        message = takenMessage,
+                        actualWorker = newWorker
+                    ))
                 )
             }
             return
         }
 
-        val updated = profileManager.updateProfileWorkerName(mismatch.profileId, newWorker)
+        val updated = profileManager.updateProfileWorkerName(profileId, newWorker)
         if (updated == null) {
             _uiState.update {
                 it.copy(identityRenameMessage = "Rename could not be applied — try again.")
@@ -1696,9 +1737,13 @@ class DashboardViewModel(
 
         _uiState.update {
             it.copy(
-                identityMismatch = null,
-                identityRenameMessage =
-                    "Renamed ${mismatch.expectedWorker} → $newWorker — refreshing",
+                identityMismatch = if (it.identityMismatch?.profileId == profileId) null else it.identityMismatch,
+                identityRenameMessage = "$renamedLabel — refreshing",
+                identityChecks = it.identityChecks + (profileId to IdentityCheckUi(
+                    status = IdentityCheckUi.Status.RENAMED,
+                    message = "$renamedLabel — refreshing",
+                    actualWorker = newWorker
+                )),
                 activeProfile = if (it.activeProfile?.id == updated.id) updated else it.activeProfile
             )
         }
@@ -1718,15 +1763,21 @@ class DashboardViewModel(
         // rows, so a row uploaded by another relay, e.g. Sabaltongba's
         // Lite phone, is untouched and reported as such). Best-effort:
         // the outcome replaces the rename message in place.
-        val cleanupIds = RelayUpload.renameCleanupIds(mismatch.expectedWorker, newWorker)
+        val cleanupIds = RelayUpload.renameCleanupIds(expectedWorker, newWorker)
         if (cleanupIds.isNotEmpty()) {
             val cfg = _uiState.value.cloudConfig
             if (cfg.webhookUrl.isBlank() || cfg.userName.isBlank()) {
+                val skippedMessage =
+                    "$renamedLabel — sheet cleanup skipped " +
+                        "(no cloud user set on this phone); the old row stays in the sheet"
                 _uiState.update {
                     it.copy(
-                        identityRenameMessage =
-                            "Renamed ${mismatch.expectedWorker} → $newWorker — sheet cleanup skipped " +
-                                "(no cloud user set on this phone); the old row stays in the sheet"
+                        identityRenameMessage = skippedMessage,
+                        identityChecks = it.identityChecks + (profileId to IdentityCheckUi(
+                            status = IdentityCheckUi.Status.RENAMED,
+                            message = skippedMessage,
+                            actualWorker = newWorker
+                        ))
                     )
                 }
             } else {
@@ -1740,17 +1791,95 @@ class DashboardViewModel(
                         else ->
                             "sheet cleanup failed — the old row is still in the sheet"
                     }
+                    val finalMessage = "$renamedLabel — $suffix"
                     _uiState.update {
-                        if (it.identityRenameMessage?.startsWith("Renamed") == true) {
-                            it.copy(
-                                identityRenameMessage =
-                                    "Renamed ${mismatch.expectedWorker} → $newWorker — $suffix"
-                            )
-                        } else {
-                            it
-                        }
+                        it.copy(
+                            identityRenameMessage =
+                                if (it.identityRenameMessage?.startsWith(renamedLabel) == true) {
+                                    finalMessage
+                                } else {
+                                    it.identityRenameMessage
+                                },
+                            identityChecks = if (it.identityChecks[profileId]?.status == IdentityCheckUi.Status.RENAMED) {
+                                it.identityChecks + (profileId to IdentityCheckUi(
+                                    status = IdentityCheckUi.Status.RENAMED,
+                                    message = finalMessage,
+                                    actualWorker = newWorker
+                                ))
+                            } else {
+                                it.identityChecks
+                            }
+                        )
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Manual identity check (v0.5.7, Settings → Miner identity check):
+     * runs ONLY when the user taps Check for that miner. Probes the
+     * saved address with the profile's own credentials, reads the
+     * miner's pool worker, and classifies it against the saved name —
+     * the persistent result line (and, on a proven mismatch, the same
+     * "Use new name" action) lives in [AppUiState.identityChecks].
+     * There is deliberately no automatic or background caller.
+     */
+    fun checkMinerIdentity(profileId: String) {
+        val profile = profileManager.savedProfiles.value.firstOrNull { it.id == profileId } ?: return
+        if (_uiState.value.identityChecks[profileId]?.status == IdentityCheckUi.Status.CHECKING) return
+        _uiState.update {
+            it.copy(
+                identityChecks = it.identityChecks + (profileId to IdentityCheckUi(
+                    status = IdentityCheckUi.Status.CHECKING,
+                    message = "Checking ${profile.host}…"
+                ))
+            )
+        }
+        viewModelScope.launch {
+            val result = try {
+                detector.verifyMinerWithCredentials(profile.host, profile.username, profile.password)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            val actual = result?.workerName?.trim().orEmpty()
+            val outcome = com.example.antminerconnectiontest.domain.model.LiveIdentity.classifyManualCheck(
+                expectedWorker = profile.workerName,
+                confirmed = result?.isConfirmed == true,
+                actualWorker = actual
+            )
+            val entry = when (outcome) {
+                com.example.antminerconnectiontest.domain.model.LiveIdentity.CheckOutcome.MATCH ->
+                    IdentityCheckUi(
+                        status = IdentityCheckUi.Status.MATCH,
+                        message = "✓ Miner reports $actual — matches the saved name"
+                    )
+                com.example.antminerconnectiontest.domain.model.LiveIdentity.CheckOutcome.MISMATCH ->
+                    IdentityCheckUi(
+                        status = IdentityCheckUi.Status.MISMATCH,
+                        message = "Miner now reports $actual — saved name is ${profile.workerName}",
+                        actualWorker = actual
+                    )
+                com.example.antminerconnectiontest.domain.model.LiveIdentity.CheckOutcome.NO_NAME_SAVED ->
+                    IdentityCheckUi(
+                        status = IdentityCheckUi.Status.MISMATCH,
+                        message = "Miner reports $actual — no name saved yet for this entry",
+                        actualWorker = actual
+                    )
+                com.example.antminerconnectiontest.domain.model.LiveIdentity.CheckOutcome.UNVERIFIED ->
+                    IdentityCheckUi(
+                        status = IdentityCheckUi.Status.UNREACHABLE,
+                        message = if (result?.isConfirmed == true) {
+                            "The miner at ${profile.host} answered, but its pool worker couldn't be read — try again"
+                        } else {
+                            "Couldn't verify a miner at ${profile.host} — be on its Wi-Fi, then tap Check again"
+                        }
+                    )
+            }
+            _uiState.update {
+                it.copy(identityChecks = it.identityChecks + (profileId to entry))
             }
         }
     }

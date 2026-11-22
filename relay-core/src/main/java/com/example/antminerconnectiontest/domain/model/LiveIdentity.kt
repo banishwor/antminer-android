@@ -66,6 +66,45 @@ object LiveIdentity {
             get() = decision == Decision.VERIFIED || decision == Decision.LEARN
     }
 
+    /** Outcome of a user-initiated manual identity check (v0.5.7). */
+    enum class CheckOutcome {
+        /** The miner answered and proved the saved worker. */
+        MATCH,
+
+        /** The miner answered and proved a DIFFERENT worker. */
+        MISMATCH,
+
+        /** The miner proved a worker but the profile has none saved yet. */
+        NO_NAME_SAVED,
+
+        /** No proof: the miner did not confirm, or its worker was unreadable. */
+        UNVERIFIED
+    }
+
+    /**
+     * Classifies a manual identity check (Settings → Miner identity
+     * check): the user tapped Check for a saved profile expecting
+     * [expectedWorker]; the probe of the profile's address either
+     * confirmed a miner there ([confirmed]) and read its pool worker
+     * ([actualWorker]), or it did not. Only MATCH / MISMATCH /
+     * NO_NAME_SAVED carry proof — UNVERIFIED must never offer a rename.
+     */
+    fun classifyManualCheck(
+        expectedWorker: String?,
+        confirmed: Boolean,
+        actualWorker: String?
+    ): CheckOutcome {
+        val actual = actualWorker?.trim().orEmpty()
+        if (!confirmed || actual.isBlank()) return CheckOutcome.UNVERIFIED
+        val expected = MinerMerge.normalizeWorkerName(expectedWorker)
+        if (expected.isBlank()) return CheckOutcome.NO_NAME_SAVED
+        return if (MinerMerge.normalizeWorkerName(actual) == expected) {
+            CheckOutcome.MATCH
+        } else {
+            CheckOutcome.MISMATCH
+        }
+    }
+
     /**
      * The worker identity a pools response proves: the first non-blank
      * pool user, trimmed, or null when the response carries none.

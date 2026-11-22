@@ -64,6 +64,38 @@ class LiveIdentityTest {
     }
 
     @Test
+    fun classifyManualCheck_matchMismatchNoNameUnverified() {
+        // v0.5.7 manual check (Settings): same worker (any case) = MATCH.
+        assertEquals(
+            LiveIdentity.CheckOutcome.MATCH,
+            LiveIdentity.classifyManualCheck("banishwor.001", true, " Banishwor.001 ")
+        )
+        // Proven different worker = MISMATCH (the rename offer case).
+        assertEquals(
+            LiveIdentity.CheckOutcome.MISMATCH,
+            LiveIdentity.classifyManualCheck("banishwor.001", true, "bani009.001")
+        )
+        // Nothing saved yet = NO_NAME_SAVED (offer to save the name).
+        assertEquals(
+            LiveIdentity.CheckOutcome.NO_NAME_SAVED,
+            LiveIdentity.classifyManualCheck("", true, "bani009.001")
+        )
+        // No proof, no rename: unconfirmed probe, or worker unreadable.
+        assertEquals(
+            LiveIdentity.CheckOutcome.UNVERIFIED,
+            LiveIdentity.classifyManualCheck("banishwor.001", false, "bani009.001")
+        )
+        assertEquals(
+            LiveIdentity.CheckOutcome.UNVERIFIED,
+            LiveIdentity.classifyManualCheck("banishwor.001", true, "  ")
+        )
+        assertEquals(
+            LiveIdentity.CheckOutcome.UNVERIFIED,
+            LiveIdentity.classifyManualCheck("banishwor.001", true, null)
+        )
+    }
+
+    @Test
     fun decide_blankExpectedWorker_isLearn_andCarriesTheProvenWorker() {
         val verdict = LiveIdentity.decide("", listOf(pool("bishambhor.001")))
         assertEquals(LiveIdentity.Decision.LEARN, verdict.decision)

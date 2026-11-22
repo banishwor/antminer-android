@@ -108,7 +108,13 @@ fun DeviceScreen(
     // TabSource): drives the saved-miners list chip. LIVE only while
     // its live session is online, CLOUD when only its cloud snapshot
     // backs it, LOCAL when it has neither (no chip is rendered then).
-    activeProfileSource: TabDataSource = TabDataSource.LOCAL
+    activeProfileSource: TabDataSource = TabDataSource.LOCAL,
+    // Manual identity check (v0.5.7): per-profile Check results and the
+    // two actions — check a miner's current pool worker against its
+    // saved name, and (only on a proven mismatch) use the new name.
+    identityChecks: Map<String, com.example.antminerconnectiontest.ui.IdentityCheckUi> = emptyMap(),
+    onCheckMinerIdentity: (String) -> Unit = {},
+    onUseNewWorkerNameFor: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     val sys = data?.systemInfo
     var isMacMasked by remember { mutableStateOf(false) }
@@ -362,6 +368,91 @@ fun DeviceScreen(
                     SettingsRowDivider()
                 }
             }
+            }
+        }
+
+        // ── Miner identity check (v0.5.7) ───────────────────────────
+        // Manual, per-miner: if a miner's pool worker was changed after
+        // it was added, Check reads the name the miner reports NOW and
+        // compares it with the saved name. A proven mismatch offers the
+        // same tap-to-rename as the dashboard. Nothing here runs on its
+        // own — only on the Check tap.
+        DeviceSectionLabel("Miner identity check")
+        Text(
+            text = "Changed a miner's pool worker? Be on its Wi-Fi, tap Check — the app reads the name the miner reports now and compares it with the saved name.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+        )
+        if (profilesToShow.isEmpty()) {
+            Text(
+                text = "No saved miners to check yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+            )
+        } else {
+            SettingsPanel {
+                profilesToShow.forEachIndexed { index, item ->
+                    val check = identityChecks[item.id]
+                    Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.effectiveName,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Saved name: ${item.workerName.ifBlank { "(none yet)" }} • ${item.host}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            TextButton(
+                                onClick = { onCheckMinerIdentity(item.id) },
+                                enabled = check?.status != com.example.antminerconnectiontest.ui.IdentityCheckUi.Status.CHECKING,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    if (check?.status == com.example.antminerconnectiontest.ui.IdentityCheckUi.Status.CHECKING) "CHECKING…" else "CHECK",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        if (check != null) {
+                            Text(
+                                text = check.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = when (check.status) {
+                                    com.example.antminerconnectiontest.ui.IdentityCheckUi.Status.MATCH ->
+                                        MaterialTheme.colorScheme.primary
+                                    com.example.antminerconnectiontest.ui.IdentityCheckUi.Status.MISMATCH ->
+                                        MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                            if (check.status == com.example.antminerconnectiontest.ui.IdentityCheckUi.Status.MISMATCH &&
+                                check.actualWorker != null
+                            ) {
+                                Button(
+                                    onClick = {
+                                        onUseNewWorkerNameFor(item.id, item.workerName, check.actualWorker)
+                                    },
+                                    modifier = Modifier.padding(top = 8.dp)
+                                ) {
+                                    Text("Same machine — use new name", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    if (index < profilesToShow.lastIndex) {
+                        SettingsRowDivider()
+                    }
+                }
             }
         }
 
