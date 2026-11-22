@@ -120,6 +120,28 @@ object RelayUpload {
      * machines this user may merely view. Returns the rows' raw stored
      * ids, distinct, in sheet order.
      */
+    /**
+     * Sheet cleanup for a tap-to-rename (v0.5.6): the sheet ids the
+     * renaming phone should ask the endpoint to delete under its OWN
+     * cloud user — the OLD worker's row, which would otherwise freeze
+     * at its last upload and show in the fleet forever as a ghost of
+     * the same machine. Only the rename tap may produce this: an
+     * offline miner's row looks exactly like a renamed-away row, so no
+     * heuristic or background cycle ever deletes by this rule.
+     *
+     * Returns the old worker's trimmed sheet id, or nothing when there
+     * is no distinct old identity to remove (blank old name, or the
+     * "rename" is only a case/whitespace variant of the same worker —
+     * that is the same sheet row, still being written).
+     */
+    fun renameCleanupIds(oldWorkerName: String?, newWorkerName: String?): List<String> {
+        val oldId = sheetIdForWorkerName(oldWorkerName) ?: return emptyList()
+        val newNorm = MinerMerge.normalizeWorkerName(newWorkerName)
+        if (newNorm.isBlank()) return emptyList()
+        if (MinerMerge.normalizeWorkerName(oldId) == newNorm) return emptyList()
+        return listOf(oldId)
+    }
+
     fun legacyDuplicateIds(
         fetched: List<RemoteMinerSnapshot>,
         uploadUser: String,

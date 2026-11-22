@@ -20,10 +20,12 @@ import androidx.core.content.FileProvider
 import com.banishwor.antminerrelay.storage.LiteRelayStorage
 import com.banishwor.antminerrelay.storage.LiteState
 import com.example.antminerconnectiontest.data.api.AntminerReadApiImpl
+import com.example.antminerconnectiontest.data.cloud.CloudSyncManager
 import com.example.antminerconnectiontest.data.scanner.AntminerDetector
 import com.example.antminerconnectiontest.data.scanner.DiscoveryStatus
 import com.example.antminerconnectiontest.domain.model.CloudSyncConfig
 import com.example.antminerconnectiontest.domain.model.MinerProfile
+import com.example.antminerconnectiontest.domain.model.RelayUpload
 import com.example.antminerconnectiontest.relay.MinerPollState
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -644,6 +646,36 @@ class MainActivity : Activity() {
         storage.saveProfiles(profiles.map { if (it.id == profileId) renamed else it })
         refreshProfiles()
         refreshStatus()
+
+        // Sheet cleanup (v0.1.5): the OLD worker's sheet row would
+        // otherwise freeze at its last upload and show in the fleet
+        // forever as a ghost of this same machine. This tap — and only
+        // this tap — asks the endpoint to delete it, under THIS phone's
+        // own cloud user (the endpoint deletes only the caller's own
+        // rows). Best-effort, off the UI thread; the result is shown.
+        val cleanupIds = RelayUpload.renameCleanupIds(target.workerName, newWorker)
+        if (cleanupIds.isEmpty()) return
+        val config = storage.loadCloudConfig()
+        if (config.webhookUrl.isBlank() || config.userName.isBlank()) {
+            showAddResult(
+                "Renamed ${target.workerName} → $newWorker — sheet cleanup skipped " +
+                    "(no cloud user set); the old row stays in the sheet."
+            )
+            return
+        }
+        thread(name = "lite-rename-cleanup") {
+            val res = runBlocking {
+                CloudSyncManager().deleteRemoteRows(config.webhookUrl, config.userName, cleanupIds)
+            }
+            val suffix = when {
+                res.isSuccess && (res.getOrNull() ?: 0) > 0 -> "old sheet row removed."
+                res.isSuccess -> "no sheet row under ${config.userName} to remove."
+                else -> "sheet cleanup failed — the old row is still in the sheet."
+            }
+            runOnUiThread {
+                showAddResult("Renamed ${target.workerName} → $newWorker — $suffix")
+            }
+        }
     }
 
     private fun ageText(epochMs: Long): String {

@@ -207,4 +207,29 @@ class RelayUploadTest {
         assertEquals(1, RelayUpload.filterUploadable(uploads, "Master", emptyList()).size)
         assertEquals(1, RelayUpload.filterUploadable(uploads, "", listOf(snapshot(user = "X", id = "a.1"))).size)
     }
+
+    @Test
+    fun renameCleanupIds_realRename_returnsOldWorkersSheetId() {
+        // v0.5.6: banishwor.001 renamed to bani009.001 — the old row is
+        // the ghost to delete (trimmed, case preserved).
+        assertEquals(
+            listOf("banishwor.001"),
+            RelayUpload.renameCleanupIds(" banishwor.001 ", "bani009.001")
+        )
+    }
+
+    @Test
+    fun renameCleanupIds_sameWorkerCaseVariant_returnsNothing() {
+        // Same sheet row, still being written — deleting it would
+        // remove the live row.
+        assertTrue(RelayUpload.renameCleanupIds("banishwor.001", " Banishwor.001 ").isEmpty())
+    }
+
+    @Test
+    fun renameCleanupIds_blankSides_returnsNothing() {
+        assertTrue(RelayUpload.renameCleanupIds("", "bani009.001").isEmpty())
+        assertTrue(RelayUpload.renameCleanupIds(null, "bani009.001").isEmpty())
+        assertTrue(RelayUpload.renameCleanupIds("banishwor.001", " ").isEmpty())
+        assertTrue(RelayUpload.renameCleanupIds("banishwor.001", null).isEmpty())
+    }
 }

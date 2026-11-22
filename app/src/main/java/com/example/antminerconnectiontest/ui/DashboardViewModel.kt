@@ -1661,8 +1661,10 @@ class DashboardViewModel(
      * machine whose pool worker was changed. The saved profile is
      * updated in place to the new worker — host, nickname, location and
      * credentials preserved, no duplicate, no data clear — then the
-     * dashboard refreshes (the miner flips LIVE under its new name) and
-     * a cloud sync runs so the relay follows the new identity.
+     * dashboard refreshes (the miner flips LIVE under its new name), a
+     * cloud sync runs so the relay follows the new identity, and the
+     * OLD worker's sheet row is deleted under this phone's own cloud
+     * user so it does not linger as a ghost (v0.5.6).
      *
      * This tap is the ONLY way a known worker name changes: automatic
      * renaming would let a different person's miner at the same private
@@ -1707,6 +1709,50 @@ class DashboardViewModel(
             repository.refreshDashboardData()
         }
         syncCloudNow()
+
+        // Sheet cleanup (v0.5.6): the OLD worker's sheet row would
+        // otherwise freeze at its last upload and show in the fleet
+        // forever as a ghost of this same machine. This tap — and only
+        // this tap — asks the endpoint to delete it, under THIS phone's
+        // own cloud user (the endpoint deletes only the caller's own
+        // rows, so a row uploaded by another relay, e.g. Sabaltongba's
+        // Lite phone, is untouched and reported as such). Best-effort:
+        // the outcome replaces the rename message in place.
+        val cleanupIds = RelayUpload.renameCleanupIds(mismatch.expectedWorker, newWorker)
+        if (cleanupIds.isNotEmpty()) {
+            val cfg = _uiState.value.cloudConfig
+            if (cfg.webhookUrl.isBlank() || cfg.userName.isBlank()) {
+                _uiState.update {
+                    it.copy(
+                        identityRenameMessage =
+                            "Renamed ${mismatch.expectedWorker} → $newWorker — sheet cleanup skipped " +
+                                "(no cloud user set on this phone); the old row stays in the sheet"
+                    )
+                }
+            } else {
+                viewModelScope.launch {
+                    val res = cloudSyncManager.deleteRemoteRows(cfg.webhookUrl, cfg.userName, cleanupIds)
+                    val suffix = when {
+                        res.isSuccess && (res.getOrNull() ?: 0) > 0 ->
+                            "old sheet row removed"
+                        res.isSuccess ->
+                            "no sheet row under ${cfg.userName} to remove — the old row belongs to another relay user"
+                        else ->
+                            "sheet cleanup failed — the old row is still in the sheet"
+                    }
+                    _uiState.update {
+                        if (it.identityRenameMessage?.startsWith("Renamed") == true) {
+                            it.copy(
+                                identityRenameMessage =
+                                    "Renamed ${mismatch.expectedWorker} → $newWorker — $suffix"
+                            )
+                        } else {
+                            it
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun updateMinerNicknameAndLocation(profileId: String, newNickname: String, newLocation: String) {
