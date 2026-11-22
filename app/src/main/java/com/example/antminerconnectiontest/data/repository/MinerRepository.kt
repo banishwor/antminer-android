@@ -38,6 +38,17 @@ class MinerRepository(
     private val _dashboardError = MutableStateFlow<String?>(null)
     val dashboardError: StateFlow<String?> = _dashboardError.asStateFlow()
 
+    /**
+     * The proven identity mismatch of the currently active profile
+     * (v0.5.5), or null. Set only when the answering miner PROVED a
+     * different pool worker (LiveIdentity MISMATCH) — never for an
+     * unverified read — and cleared on a proven refresh, a profile
+     * switch, or disconnect. This is what the UI offers the
+     * tap-to-rename action from; the rename itself is never automatic.
+     */
+    private val _identityMismatch = MutableStateFlow<LiveIdentity.Mismatch?>(null)
+    val identityMismatch: StateFlow<LiveIdentity.Mismatch?> = _identityMismatch.asStateFlow()
+
     private var pollingJob: Job? = null
     var onProfileAutoUpdated: ((MinerProfile) -> Unit)? = null
 
@@ -74,6 +85,7 @@ class MinerRepository(
             // screen instead of blanking the dashboard until the next poll.
             _dashboardData.value = null
             _dashboardError.value = null
+            _identityMismatch.value = null
         }
     }
 
@@ -84,6 +96,7 @@ class MinerRepository(
         _activeProfile.value = null
         _dashboardData.value = null
         _dashboardError.value = null
+        _identityMismatch.value = null
     }
 
     /**
@@ -201,6 +214,22 @@ class MinerRepository(
                             IllegalStateException("Refresh superseded by a miner switch")
                         )
                     }
+                    // Expose the structured mismatch (v0.5.5) only for a
+                    // PROVEN different worker, so the UI can offer the
+                    // tap-to-rename action; an unverified read clears it.
+                    _identityMismatch.value = if (
+                        verdict.decision == LiveIdentity.Decision.MISMATCH &&
+                        !verdict.actualWorker.isNullOrBlank()
+                    ) {
+                        LiveIdentity.Mismatch(
+                            profileId = profile.id,
+                            expectedWorker = profile.workerName.trim(),
+                            actualWorker = verdict.actualWorker.orEmpty(),
+                            host = profile.host
+                        )
+                    } else {
+                        null
+                    }
                     _dashboardData.value = MinerDashboardData(
                         profileId = profile.id,
                         isOnline = false,
@@ -210,6 +239,10 @@ class MinerRepository(
                     return@withContext Result.failure(Exception(reason))
                 }
             }
+
+            // The gate passed (or no identity was expected): no mismatch
+            // stands for this profile.
+            _identityMismatch.value = null
 
             // Fall back to the previously fetched system info when available.
             val sysInfo = sysInfoRes.getOrNull() ?: previousData?.systemInfo

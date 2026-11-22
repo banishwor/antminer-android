@@ -49,7 +49,16 @@ fun MinerDataStateCard(
      */
     onFindMovedMiners: (() -> Unit)? = null,
     isFindingMovedMiners: Boolean = false,
-    movedMinerScanLines: List<String> = emptyList()
+    movedMinerScanLines: List<String> = emptyList(),
+    /**
+     * Tap-to-rename (v0.5.5): when the miner at this address PROVED a
+     * different pool worker, the error state offers "Same machine — use
+     * new name". Shown only when both are provided; the rename is never
+     * automatic. [identityRenameMessage] is the persistent result line.
+     */
+    identityMismatch: com.example.antminerconnectiontest.domain.model.LiveIdentity.Mismatch? = null,
+    onUseNewWorkerName: (() -> Unit)? = null,
+    identityRenameMessage: String? = null
 ) {
     val isError = state == MinerDataState.ERROR
     val accent = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
@@ -143,6 +152,32 @@ fun MinerDataStateCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Retry", fontWeight = FontWeight.Bold)
                 }
+            }
+
+            if (state != MinerDataState.LOADING && identityMismatch != null && onUseNewWorkerName != null) {
+                Button(
+                    onClick = onUseNewWorkerName,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Same machine — use new name", fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    text = "Tap only if this is the same machine and you changed its pool worker " +
+                        "from ${identityMismatch.expectedWorker} to ${identityMismatch.actualWorker}. " +
+                        "At another site, a different miner at this address must NOT be renamed into this entry.",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (state != MinerDataState.LOADING && identityRenameMessage != null) {
+                Text(
+                    text = identityRenameMessage,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             if (state != MinerDataState.LOADING && onFindMovedMiners != null) {

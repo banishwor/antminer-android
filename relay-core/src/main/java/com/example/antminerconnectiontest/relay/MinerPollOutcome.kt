@@ -24,7 +24,16 @@ enum class MinerPollState {
     CONNECTED,
     AUTH_FAILED,
     UNREACHABLE,
-    NOT_HASHING
+    NOT_HASHING,
+
+    /**
+     * The miner answered and proved a DIFFERENT pool worker than the
+     * saved profile expects (v0.5.5): its pool username was changed
+     * after it was added — or a different miner now sits at that
+     * address. Nothing is uploaded under either identity until the
+     * user taps the rename action (or removes the entry).
+     */
+    IDENTITY_MISMATCH
 }
 
 /** One miner's latest poll outcome, as reported to [RelayStorage]. */
@@ -32,7 +41,12 @@ data class MinerPollOutcome(
     val state: MinerPollState,
     /** 5-second hashrate in TH/s; only meaningful for CONNECTED. */
     val hashrateTh: Double = 0.0,
-    val atMs: Long = System.currentTimeMillis()
+    val atMs: Long = System.currentTimeMillis(),
+    /**
+     * Extra detail for states that need it: for IDENTITY_MISMATCH, the
+     * worker the answering miner actually proved (case-preserved).
+     */
+    val detail: String = ""
 )
 
 /**

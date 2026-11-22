@@ -94,6 +94,73 @@ class MinerRepositoryIdentityTest {
     }
 
     @Test
+    fun mismatch_exposesStructuredMismatch_forTapToRename() = runBlocking {
+        // v0.5.5: the mismatch the UI offers the rename action from —
+        // profile id, the saved (old) worker, the proven (new) worker.
+        val repo = MinerRepository(
+            FakeReadApi(Result.success(listOf(pool("bani009.001"))))
+        )
+        repo.setActiveProfile(sabaltongba)
+
+        repo.refreshDashboardData()
+
+        val mismatch = repo.identityMismatch.value
+        assertTrue(mismatch != null)
+        assertEquals("uuid-banishwor", mismatch!!.profileId)
+        assertEquals("banishwor.001", mismatch.expectedWorker)
+        assertEquals("bani009.001", mismatch.actualWorker)
+        assertEquals("192.168.1.2", mismatch.host)
+    }
+
+    @Test
+    fun verified_matchingWorker_noMismatchExposed() = runBlocking {
+        val repo = MinerRepository(
+            FakeReadApi(Result.success(listOf(pool("banishwor.001"))))
+        )
+        repo.setActiveProfile(sabaltongba)
+
+        repo.refreshDashboardData()
+
+        assertNull(repo.identityMismatch.value)
+    }
+
+    @Test
+    fun unverified_poolsUnreadable_noMismatchExposed() = runBlocking {
+        // An unreadable pools response proves nothing about identity —
+        // it must never offer a rename.
+        val repo = MinerRepository(
+            FakeReadApi(Result.failure(Exception("pools timeout")))
+        )
+        repo.setActiveProfile(sabaltongba)
+
+        repo.refreshDashboardData()
+
+        assertNull(repo.identityMismatch.value)
+    }
+
+    @Test
+    fun renamedProfile_nextRefreshVerifiesAndClearsMismatch() = runBlocking {
+        // The full v0.5.5 loop: mismatch exposed under the old worker;
+        // after the profile is renamed to the proven worker, the same
+        // miner verifies and the mismatch clears.
+        val api = object : MinerReadApi by FakeReadApi(Result.success(listOf(pool("bani009.001")))) {
+            override suspend fun getPools(profile: MinerProfile): Result<List<MinerPool>> =
+                Result.success(listOf(pool("bani009.001")))
+        }
+        val repo = MinerRepository(api)
+        repo.setActiveProfile(sabaltongba)
+        repo.refreshDashboardData()
+        assertEquals("bani009.001", repo.identityMismatch.value?.actualWorker)
+
+        repo.setActiveProfile(sabaltongba.copy(workerName = "bani009.001"))
+        val result = repo.refreshDashboardData()
+
+        assertTrue(result.isSuccess)
+        assertTrue(repo.dashboardData.value?.isOnline == true)
+        assertNull(repo.identityMismatch.value)
+    }
+
+    @Test
     fun verified_matchingWorker_publishesLive() = runBlocking {
         val repo = MinerRepository(
             FakeReadApi(Result.success(listOf(pool(" Banishwor.001 "))))

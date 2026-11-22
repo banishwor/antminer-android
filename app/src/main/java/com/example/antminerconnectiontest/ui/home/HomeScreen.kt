@@ -89,6 +89,10 @@ fun HomeScreen(
     onFindMovedMiners: (() -> Unit)? = null,
     isFindingMovedMiners: Boolean = false,
     movedMinerScanLines: List<String> = emptyList(),
+    /** Tap-to-rename (v0.5.5), forwarded to the error state card / banner. */
+    identityMismatch: com.example.antminerconnectiontest.domain.model.LiveIdentity.Mismatch? = null,
+    onUseNewWorkerName: (() -> Unit)? = null,
+    identityRenameMessage: String? = null,
     onManualRefresh: () -> Unit,
     onOpenMinerSwitcher: () -> Unit,
     onSelectMinerProfile: (MinerProfile) -> Unit,
@@ -315,7 +319,10 @@ fun HomeScreen(
                             onRetry = effectiveRetry,
                             onFindMovedMiners = onFindMovedMiners,
                             isFindingMovedMiners = isFindingMovedMiners,
-                            movedMinerScanLines = movedMinerScanLines
+                            movedMinerScanLines = movedMinerScanLines,
+                            identityMismatch = identityMismatch,
+                            onUseNewWorkerName = onUseNewWorkerName,
+                            identityRenameMessage = identityRenameMessage
                         )
                     } else {
                         MinerDataStateCard(
@@ -329,22 +336,44 @@ fun HomeScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = dashboardError,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f)
-                            )
-                            TextButton(
-                                onClick = effectiveRetry,
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Retry", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                Text(
+                                    text = dashboardError,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = effectiveRetry,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                ) {
+                                    Text("Retry", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                            // Tap-to-rename (v0.5.5): only on a proven
+                            // mismatch, only on the user's tap.
+                            if (identityMismatch != null && onUseNewWorkerName != null) {
+                                TextButton(
+                                    onClick = onUseNewWorkerName,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                ) {
+                                    Text(
+                                        "Same machine — use new name (${identityMismatch.actualWorker})",
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            if (identityRenameMessage != null) {
+                                Text(
+                                    text = identityRenameMessage,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
                             }
                         }
                     }

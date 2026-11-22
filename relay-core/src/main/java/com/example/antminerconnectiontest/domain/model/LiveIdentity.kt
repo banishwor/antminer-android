@@ -40,6 +40,22 @@ object LiveIdentity {
         LEARN
     }
 
+    /**
+     * A proven identity mismatch for one profile (v0.5.5): the miner at
+     * the profile's address answered and proved it now runs as
+     * [actualWorker], while the saved profile still expects
+     * [expectedWorker]. This is the ONLY state in which the UI may offer
+     * the tap-to-rename action — a rename is never applied automatically,
+     * because the same evidence at another site means a DIFFERENT
+     * person's miner happens to sit at the same private IP (v0.5.3).
+     */
+    data class Mismatch(
+        val profileId: String,
+        val expectedWorker: String,
+        val actualWorker: String,
+        val host: String
+    )
+
     data class Verdict(
         val decision: Decision,
         /** The worker the answering miner proved, case-preserved; null when unreadable. */

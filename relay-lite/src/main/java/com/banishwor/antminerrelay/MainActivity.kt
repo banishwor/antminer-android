@@ -135,6 +135,10 @@ class MainActivity : Activity() {
     /** Per-row outcome lines (profile id -> view), updated by the 2 s tick. */
     private val outcomeViews = LinkedHashMap<String, TextView>()
 
+    /** Per-row "Use new name" buttons (profile id -> view), v0.1.4: shown
+     *  only while that miner's latest outcome is IDENTITY_MISMATCH. */
+    private val renameViews = LinkedHashMap<String, Button>()
+
     /** Profiles as last rendered, so the tick can map outcomes by host. */
     private var currentProfiles: List<MinerProfile> = emptyList()
 
@@ -452,6 +456,7 @@ class MainActivity : Activity() {
     private fun refreshProfiles() {
         profilesContainer.removeAllViews()
         outcomeViews.clear()
+        renameViews.clear()
         val profiles = storage.loadSavedProfiles()
         currentProfiles = profiles
         if (profiles.isEmpty()) {
@@ -501,6 +506,17 @@ class MainActivity : Activity() {
             live.visibility = View.GONE
             texts.addView(live)
             outcomeViews[profile.id] = live
+
+            // Tap-to-rename (v0.1.4): hidden unless the engine's latest
+            // outcome for this host is a proven identity mismatch. The
+            // tap is the only way the saved worker changes — the new
+            // worker name is read from the stored outcome at tap time.
+            val rename = Button(this)
+            rename.textSize = 13f
+            rename.visibility = View.GONE
+            rename.setOnClickListener { onUseNewWorkerName(profile.id) }
+            texts.addView(rename)
+            renameViews[profile.id] = rename
             row.addView(texts)
 
             val remove = Button(this)
@@ -558,6 +574,7 @@ class MainActivity : Activity() {
             val outcome = outcomes[profile.host]
             if (outcome == null) {
                 view.visibility = View.GONE
+                renameViews[profile.id]?.visibility = View.GONE
                 continue
             }
             view.visibility = View.VISIBLE
@@ -578,8 +595,55 @@ class MainActivity : Activity() {
                     view.text = "Answered — not hashing"
                     view.setTextColor(Color.parseColor("#B26A00"))
                 }
+                MinerPollState.IDENTITY_MISMATCH -> {
+                    view.text =
+                        "Worker changed — now reports ${outcome.detail.ifBlank { "a different worker" }} • Not uploading"
+                    view.setTextColor(Color.parseColor("#B3261E"))
+                }
+            }
+            // The rename button rides the same outcome: visible only for
+            // a proven mismatch carrying the new worker name.
+            val renameBtn = renameViews[profile.id]
+            if (renameBtn != null) {
+                if (outcome.state == MinerPollState.IDENTITY_MISMATCH && outcome.detail.isNotBlank()) {
+                    renameBtn.text = "Same machine — use new name (${outcome.detail})"
+                    renameBtn.visibility = View.VISIBLE
+                } else {
+                    renameBtn.visibility = View.GONE
+                }
             }
         }
+    }
+
+    /**
+     * Tap-to-rename (v0.1.4): the user confirms the miner at this entry's
+     * address is the same machine whose pool worker was changed. The
+     * saved entry is updated in place to the worker the miner proved —
+     * host, credentials and the entry itself are preserved — and the
+     * next relay cycle uploads under the new name. Never automatic:
+     * at another site a different miner can sit at the same address.
+     */
+    private fun onUseNewWorkerName(profileId: String) {
+        val profiles = storage.loadSavedProfiles()
+        val target = profiles.firstOrNull { it.id == profileId } ?: return
+        val outcome = LiteState.loadMinerOutcomes(applicationContext)[target.host] ?: return
+        if (outcome.state != MinerPollState.IDENTITY_MISMATCH) return
+        val newWorker = outcome.detail.trim()
+        if (newWorker.isBlank()) return
+        val taken = profiles.any {
+            it.id != profileId && it.workerName.trim().equals(newWorker, ignoreCase = true)
+        }
+        if (taken) {
+            showAddResult("Another saved miner already uses $newWorker — rename not applied.")
+            return
+        }
+        val renamed = target.copy(
+            workerName = newWorker,
+            displayName = if (target.displayName == target.workerName) newWorker else target.displayName
+        )
+        storage.saveProfiles(profiles.map { if (it.id == profileId) renamed else it })
+        refreshProfiles()
+        refreshStatus()
     }
 
     private fun ageText(epochMs: Long): String {

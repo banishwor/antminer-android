@@ -77,6 +77,15 @@ data class AppUiState(
     val isProfileSwitcherOpen: Boolean = false,
     val dashboardData: MinerDashboardData? = null,
     val dashboardError: String? = null,
+    /**
+     * Tap-to-rename (v0.5.5): the active profile's proven identity
+     * mismatch, when the miner at its address now runs under a new pool
+     * worker. Non-null is the ONLY state that shows the "Same machine —
+     * use new name" action; [identityRenameMessage] is the persistent
+     * in-place result line (applied, or why it could not be applied).
+     */
+    val identityMismatch: com.example.antminerconnectiontest.domain.model.LiveIdentity.Mismatch? = null,
+    val identityRenameMessage: String? = null,
     val activeAlerts: List<MinerAlert> = emptyList(),
     val isRefreshing: Boolean = false,
     val selectedTab: DashboardTab = DashboardTab.HOME,
@@ -477,6 +486,13 @@ class DashboardViewModel(
         viewModelScope.launch {
             repository.dashboardError.collect { error ->
                 _uiState.update { it.copy(dashboardError = error) }
+            }
+        }
+
+        // Mirror the proven identity mismatch (v0.5.5) for the rename action.
+        viewModelScope.launch {
+            repository.identityMismatch.collect { mismatch ->
+                _uiState.update { it.copy(identityMismatch = mismatch) }
             }
         }
 
@@ -1637,6 +1653,60 @@ class DashboardViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Tap-to-rename (v0.5.5): the user confirms, from a proven identity
+     * mismatch, that the miner at the profile's address IS the same
+     * machine whose pool worker was changed. The saved profile is
+     * updated in place to the new worker — host, nickname, location and
+     * credentials preserved, no duplicate, no data clear — then the
+     * dashboard refreshes (the miner flips LIVE under its new name) and
+     * a cloud sync runs so the relay follows the new identity.
+     *
+     * This tap is the ONLY way a known worker name changes: automatic
+     * renaming would let a different person's miner at the same private
+     * IP (another site) silently steal the profile (see v0.5.3).
+     */
+    fun useNewWorkerName() {
+        val mismatch = _uiState.value.identityMismatch ?: return
+        val newWorker = mismatch.actualWorker.trim()
+        if (newWorker.isBlank()) return
+
+        if (profileManager.isWorkerNameTakenByOther(mismatch.profileId, newWorker)) {
+            _uiState.update {
+                it.copy(
+                    identityRenameMessage =
+                        "Another saved miner already uses $newWorker — rename not applied. " +
+                            "Remove that entry first if it is a duplicate."
+                )
+            }
+            return
+        }
+
+        val updated = profileManager.updateProfileWorkerName(mismatch.profileId, newWorker)
+        if (updated == null) {
+            _uiState.update {
+                it.copy(identityRenameMessage = "Rename could not be applied — try again.")
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                identityMismatch = null,
+                identityRenameMessage =
+                    "Renamed ${mismatch.expectedWorker} → $newWorker — refreshing",
+                activeProfile = if (it.activeProfile?.id == updated.id) updated else it.activeProfile
+            )
+        }
+        if (_uiState.value.activeProfile?.id == updated.id) {
+            repository.setActiveProfile(updated)
+        }
+        viewModelScope.launch {
+            repository.refreshDashboardData()
+        }
+        syncCloudNow()
     }
 
     fun updateMinerNicknameAndLocation(profileId: String, newNickname: String, newLocation: String) {

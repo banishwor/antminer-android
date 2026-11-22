@@ -106,6 +106,9 @@ class RelayEngine(
                 val profiles = storage.loadSavedProfiles()
                 val snapshots = mutableListOf<RemoteMinerSnapshot>()
                 var deferredCount = 0
+                // Of the deferred, how many are proven renames (v0.5.5):
+                // the miner answered as a different worker than saved.
+                var mismatchCount = 0
                 // Honest failure counts (v0.1.2): a failed poll is no
                 // longer silently dropped — it is classified (wrong
                 // password vs unreachable vs answered-but-not-hashing),
@@ -153,12 +156,31 @@ class RelayEngine(
                             // answering. A profile that has not learned
                             // its worker yet resolves it from these same
                             // pools (see resolveSheetId).
-                            val identityProven =
-                                LiveIdentity.decide(profile.workerName, pools).isProven
+                            val identityVerdict =
+                                LiveIdentity.decide(profile.workerName, pools)
+                            val identityProven = identityVerdict.isProven
 
                             if (!identityProven) {
                                 deferredCount++
-                                outcome = MinerPollOutcome(MinerPollState.UNREACHABLE)
+                                outcome = if (
+                                    identityVerdict.decision == LiveIdentity.Decision.MISMATCH &&
+                                    !identityVerdict.actualWorker.isNullOrBlank()
+                                ) {
+                                    // Proven rename (v0.5.5): the miner
+                                    // answered and proved a different
+                                    // worker — say so honestly instead of
+                                    // "unreachable", and carry the new
+                                    // worker so the UI can offer the
+                                    // tap-to-rename action. Nothing is
+                                    // uploaded under either identity.
+                                    mismatchCount++
+                                    MinerPollOutcome(
+                                        MinerPollState.IDENTITY_MISMATCH,
+                                        detail = identityVerdict.actualWorker.orEmpty()
+                                    )
+                                } else {
+                                    MinerPollOutcome(MinerPollState.UNREACHABLE)
+                                }
                             } else if (rate5s > 0.0 || avgRate > 0.0) {
                                 outcome = MinerPollOutcome(MinerPollState.CONNECTED, rate5s)
                                 // Machine identity = the worker
@@ -259,7 +281,12 @@ class RelayEngine(
                             storage.saveRelayStatus(System.currentTimeMillis(), null)
                         } catch (_: Exception) {}
                         val deferredNote = if (deferredCount > 0) {
-                            " • $deferredCount deferred (worker name unknown)"
+                            val parts = buildList {
+                                val unknownCount = deferredCount - mismatchCount
+                                if (unknownCount > 0) add("$unknownCount deferred (worker name unknown)")
+                                if (mismatchCount > 0) add("$mismatchCount renamed — use the new name to resume uploads")
+                            }
+                            " • " + parts.joinToString(" • ")
                         } else {
                             ""
                         }
@@ -295,9 +322,17 @@ class RelayEngine(
                             MinerPollClassifier.extraNote(authFailedCount, unreachableCount, notHashingCount)
                     )
                 } else if (deferredCount > 0) {
+                    val deferredContent = when {
+                        mismatchCount > 0 && deferredCount - mismatchCount == 0 ->
+                            "$mismatchCount miner(s) answered with a new worker name • Nothing uploaded until you tap Use new name on the renamed miner"
+                        mismatchCount > 0 ->
+                            "$deferredCount miner(s) deferred (${deferredCount - mismatchCount} worker name unknown, $mismatchCount renamed) • Nothing uploaded under a device id"
+                        else ->
+                            "$deferredCount miner(s) reachable but their worker name is unknown • Nothing uploaded under a device id"
+                    }
                     listener.onRelayStatus(
                         "⚡ Relay Standby • Upload Deferred",
-                        "$deferredCount miner(s) reachable but their worker name is unknown • Nothing uploaded under a device id" +
+                        deferredContent +
                             MinerPollClassifier.extraNote(authFailedCount, unreachableCount, notHashingCount)
                     )
                 } else {

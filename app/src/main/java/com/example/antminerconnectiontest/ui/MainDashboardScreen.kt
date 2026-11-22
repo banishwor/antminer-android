@@ -274,6 +274,9 @@ fun MainDashboardScreen(
                                 onFindMovedMiners = viewModel::findMovedMiners,
                                 isFindingMovedMiners = uiState.isFindingMovedMiners,
                                 movedMinerScanLines = uiState.movedMinerScanLines,
+                                identityMismatch = uiState.identityMismatch,
+                                onUseNewWorkerName = viewModel::useNewWorkerName,
+                                identityRenameMessage = uiState.identityRenameMessage,
                                 onManualRefresh = viewModel::manualRefresh,
                                 onOpenMinerSwitcher = { viewModel.toggleProfileSwitcher(true) },
                                 onSelectMinerProfile = viewModel::selectSavedProfile,
@@ -328,6 +331,9 @@ fun MainDashboardScreen(
                                         onFindMovedMiners = viewModel::findMovedMiners,
                                         isFindingMovedMiners = uiState.isFindingMovedMiners,
                                         movedMinerScanLines = uiState.movedMinerScanLines,
+                                        identityMismatch = uiState.identityMismatch,
+                                        onUseNewWorkerName = viewModel::useNewWorkerName,
+                                        identityRenameMessage = uiState.identityRenameMessage,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }
@@ -356,6 +362,9 @@ fun MainDashboardScreen(
                                         onFindMovedMiners = viewModel::findMovedMiners,
                                         isFindingMovedMiners = uiState.isFindingMovedMiners,
                                         movedMinerScanLines = uiState.movedMinerScanLines,
+                                        identityMismatch = uiState.identityMismatch,
+                                        onUseNewWorkerName = viewModel::useNewWorkerName,
+                                        identityRenameMessage = uiState.identityRenameMessage,
                                         bottomInset = GlassTabBarSpec.ReservedHeight
                                     )
                                 }

@@ -37,6 +37,10 @@ fun HardwareScreen(
     onFindMovedMiners: (() -> Unit)? = null,
     isFindingMovedMiners: Boolean = false,
     movedMinerScanLines: List<String> = emptyList(),
+    /** Tap-to-rename (v0.5.5), forwarded to the state card. */
+    identityMismatch: com.example.antminerconnectiontest.domain.model.LiveIdentity.Mismatch? = null,
+    onUseNewWorkerName: (() -> Unit)? = null,
+    identityRenameMessage: String? = null,
     /** Bottom dock clearance (v0.5.0): appended inside the scroll column. */
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
@@ -65,7 +69,10 @@ fun HardwareScreen(
                     onRetry = onRetry ?: onManualRefresh,
                     onFindMovedMiners = onFindMovedMiners,
                     isFindingMovedMiners = isFindingMovedMiners,
-                    movedMinerScanLines = movedMinerScanLines
+                    movedMinerScanLines = movedMinerScanLines,
+                    identityMismatch = identityMismatch,
+                    onUseNewWorkerName = onUseNewWorkerName,
+                    identityRenameMessage = identityRenameMessage
                 )
                 else -> MinerDataStateCard(
                     state = MinerDataState.OFFLINE,
@@ -73,7 +80,10 @@ fun HardwareScreen(
                     onRetry = onRetry ?: onManualRefresh,
                     onFindMovedMiners = onFindMovedMiners,
                     isFindingMovedMiners = isFindingMovedMiners,
-                    movedMinerScanLines = movedMinerScanLines
+                    movedMinerScanLines = movedMinerScanLines,
+                    identityMismatch = identityMismatch,
+                    onUseNewWorkerName = onUseNewWorkerName,
+                    identityRenameMessage = identityRenameMessage
                 )
             }
             // Dock clearance (v0.5.0): the last section can scroll

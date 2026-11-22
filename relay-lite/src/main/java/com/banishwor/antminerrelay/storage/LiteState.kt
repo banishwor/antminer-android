@@ -77,7 +77,9 @@ object LiteState {
     data class StoredOutcome(
         val state: MinerPollState,
         val hashrateTh: Double,
-        val atMs: Long
+        val atMs: Long,
+        /** For IDENTITY_MISMATCH: the worker the miner now proves (v0.1.4). */
+        val detail: String = ""
     )
 
     fun saveMinerOutcome(context: Context, host: String, outcome: MinerPollOutcome) {
@@ -91,6 +93,7 @@ object LiteState {
         entry.put("s", outcome.state.name)
         entry.put("h", outcome.hashrateTh)
         entry.put("t", outcome.atMs)
+        entry.put("d", outcome.detail)
         root.put(host, entry)
         p.edit().putString(KEY_MINER_OUTCOMES, root.toString()).apply()
     }
@@ -113,7 +116,8 @@ object LiteState {
                 out[host] = StoredOutcome(
                     state = state,
                     hashrateTh = entry.optDouble("h", 0.0),
-                    atMs = entry.optLong("t", 0L)
+                    atMs = entry.optLong("t", 0L),
+                    detail = entry.optString("d", "")
                 )
             }
         } catch (_: Exception) {

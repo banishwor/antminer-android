@@ -120,6 +120,68 @@ class MinerProfileManagerTest {
     }
 
     @Test
+    fun updateProfileWorkerName_renamesInPlace_preservingEverythingElse() {
+        // v0.5.5: the user's own machine changed its pool worker after
+        // being added. The tap-to-rename must update the SAME profile —
+        // host, nickname, location and credentials untouched, no second
+        // profile, no data clear.
+        val manager = MinerProfileManager()
+        val original = MinerProfile(
+            id = "uuid-1",
+            workerName = "banishwor.001",
+            nickname = "Left Rack S19",
+            location = "Sabaltongba",
+            host = "192.168.1.2",
+            username = "root",
+            password = "custom_password"
+        )
+        manager.saveOrUpdateProfile(original)
+
+        val updated = manager.updateProfileWorkerName("uuid-1", "bani009.001")
+
+        assertNotNull(updated)
+        assertEquals("uuid-1", updated!!.id)
+        assertEquals("bani009.001", updated.workerName)
+        assertEquals("192.168.1.2", updated.host)
+        assertEquals("Left Rack S19", updated.nickname)
+        assertEquals("Sabaltongba", updated.location)
+        assertEquals("custom_password", updated.password)
+        assertEquals(1, manager.savedProfiles.value.size)
+        assertEquals("bani009.001", manager.savedProfiles.value.first().workerName)
+    }
+
+    @Test
+    fun updateProfileWorkerName_refusesNameTakenByAnotherProfile() {
+        // Renaming onto an identity another saved profile already
+        // carries would fork one identity into two profiles — refused,
+        // both profiles untouched.
+        val manager = MinerProfileManager()
+        manager.saveOrUpdateProfile(
+            MinerProfile(id = "uuid-1", workerName = "banishwor.001", host = "192.168.1.2")
+        )
+        manager.saveOrUpdateProfile(
+            MinerProfile(id = "uuid-2", workerName = "banishwor.002", host = "192.168.1.3")
+        )
+
+        assertNull(manager.updateProfileWorkerName("uuid-1", "Banishwor.002"))
+        assertTrue(manager.isWorkerNameTakenByOther("uuid-1", "banishwor.002"))
+        assertFalse(manager.isWorkerNameTakenByOther("uuid-2", "banishwor.002"))
+        assertEquals("banishwor.001", manager.savedProfiles.value.first { it.id == "uuid-1" }.workerName)
+        assertEquals(2, manager.savedProfiles.value.size)
+    }
+
+    @Test
+    fun updateProfileWorkerName_blankOrUnknown_returnsNull() {
+        val manager = MinerProfileManager()
+        manager.saveOrUpdateProfile(
+            MinerProfile(id = "uuid-1", workerName = "banishwor.001", host = "192.168.1.2")
+        )
+        assertNull(manager.updateProfileWorkerName("uuid-1", "   "))
+        assertNull(manager.updateProfileWorkerName("uuid-gone", "bani009.001"))
+        assertEquals("banishwor.001", manager.savedProfiles.value.first().workerName)
+    }
+
+    @Test
     fun workerNameMatching_updatesIpAndPreservesNickname() {
         val manager = MinerProfileManager()
         val original = MinerProfile(

@@ -109,6 +109,64 @@ class MinerProfileManager(
         return updatedProfile
     }
 
+    /**
+     * Tap-to-rename (v0.5.5): point an existing saved profile at the NEW
+     * pool worker its miner now proves, in place — same id, host,
+     * nickname, location and credentials; no duplicate, no data clear.
+     *
+     * Called ONLY from an explicit user tap on a proven identity
+     * mismatch; never automatically (at another site a different miner
+     * can answer at the same IP with a different worker, and silently
+     * renaming there would steal that identity — see v0.5.3).
+     *
+     * Returns the updated profile, or null when the profile is gone,
+     * the new name is blank, or ANOTHER saved profile already carries
+     * that worker identity (renaming would create two profiles for one
+     * identity — the caller surfaces that instead of merging silently).
+     */
+    fun updateProfileWorkerName(profileId: String, newWorkerName: String): MinerProfile? {
+        val newWorker = newWorkerName.trim()
+        if (newWorker.isBlank()) return null
+        val newNorm = MinerMerge.normalizeWorkerName(newWorker)
+        var updated: MinerProfile? = null
+        _savedProfiles.update { currentList ->
+            val target = currentList.firstOrNull { it.id == profileId } ?: return@update currentList
+            if (MinerMerge.normalizeWorkerName(target.workerName) == newNorm) {
+                updated = target
+                return@update currentList
+            }
+            val taken = currentList.any {
+                it.id != profileId && MinerMerge.normalizeWorkerName(it.workerName) == newNorm
+            }
+            if (taken) return@update currentList
+            val renamed = target.copy(
+                workerName = newWorker,
+                // Lite-saved profiles mirror the worker into displayName;
+                // follow it only when it was exactly the old worker.
+                displayName = if (target.displayName == target.workerName) newWorker else target.displayName,
+                lastConnected = System.currentTimeMillis()
+            )
+            updated = renamed
+            currentList.map { if (it.id == profileId) renamed else it }
+        }
+        val applied = _savedProfiles.value.firstOrNull { it.id == profileId }
+            ?.takeIf { MinerMerge.normalizeWorkerName(it.workerName) == newNorm }
+        if (updated != null && applied != null) {
+            persist()
+            return applied
+        }
+        return null
+    }
+
+    /** True when a DIFFERENT saved profile already carries [workerName] (normalised). */
+    fun isWorkerNameTakenByOther(profileId: String, workerName: String): Boolean {
+        val norm = MinerMerge.normalizeWorkerName(workerName)
+        if (norm.isBlank()) return false
+        return _savedProfiles.value.any {
+            it.id != profileId && MinerMerge.normalizeWorkerName(it.workerName) == norm
+        }
+    }
+
     fun updateNicknameAndLocation(profileId: String, newNickname: String, newLocation: String) {
         _savedProfiles.update { currentList ->
             currentList.map {

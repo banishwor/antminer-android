@@ -37,6 +37,10 @@ fun PoolsScreen(
     onFindMovedMiners: (() -> Unit)? = null,
     isFindingMovedMiners: Boolean = false,
     movedMinerScanLines: List<String> = emptyList(),
+    /** Tap-to-rename (v0.5.5), forwarded to the state card. */
+    identityMismatch: com.example.antminerconnectiontest.domain.model.LiveIdentity.Mismatch? = null,
+    onUseNewWorkerName: (() -> Unit)? = null,
+    identityRenameMessage: String? = null,
     /** Bottom dock clearance (v0.5.0): appended inside the scroll columns. */
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp
 ) {
@@ -89,7 +93,10 @@ fun PoolsScreen(
                     onRetry = onRetry ?: onManualRefresh,
                     onFindMovedMiners = onFindMovedMiners,
                     isFindingMovedMiners = isFindingMovedMiners,
-                    movedMinerScanLines = movedMinerScanLines
+                    movedMinerScanLines = movedMinerScanLines,
+                    identityMismatch = identityMismatch,
+                    onUseNewWorkerName = onUseNewWorkerName,
+                    identityRenameMessage = identityRenameMessage
                 )
                 else -> com.example.antminerconnectiontest.ui.components.MinerDataStateCard(
                     state = com.example.antminerconnectiontest.ui.components.MinerDataState.OFFLINE,
@@ -97,7 +104,10 @@ fun PoolsScreen(
                     onRetry = onRetry ?: onManualRefresh,
                     onFindMovedMiners = onFindMovedMiners,
                     isFindingMovedMiners = isFindingMovedMiners,
-                    movedMinerScanLines = movedMinerScanLines
+                    movedMinerScanLines = movedMinerScanLines,
+                    identityMismatch = identityMismatch,
+                    onUseNewWorkerName = onUseNewWorkerName,
+                    identityRenameMessage = identityRenameMessage
                 )
             }
             // Dock clearance (v0.5.0).
